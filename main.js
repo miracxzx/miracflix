@@ -150,6 +150,14 @@ async function getTrailer(id, type = 'movie') {
     return trailer ? `https://www.youtube.com/embed/${trailer.key}` : null;
 }
 
+function getStoredMediaType(item, fallback = 'movie') {
+    return item?.media_type || item?.type || fallback || 'movie';
+}
+
+function getHistoryKey(item, fallback = 'movie') {
+    return `${getStoredMediaType(item, fallback)}:${item?.id}`;
+}
+
 function openPlayerPage(movie, imdbId, sourceUrl, mode = 'watch') {
     const title = movie?.title || movie?.name || 'MIRACFLIX';
     const poster = movie?.poster_path ? IMG_URL + movie.poster_path : POSTER_FALLBACK;
@@ -241,14 +249,18 @@ const DataManager = {
         updateActionButtons();
     },
 
-    removeHistoryItem: async (movieId) => {
+    removeHistoryItem: async (movieId, mediaType = null) => {
         const data = await DataManager.getUserData();
-        const history = (data?.history || []).filter(m => m.id !== movieId);
+        const targetKey = mediaType ? `${mediaType}:${movieId}` : null;
+        const history = (data?.history || []).filter(m => {
+            if (!targetKey) return m.id !== movieId;
+            return getHistoryKey(m) !== targetKey;
+        });
         await DataManager.updateUserData({ history });
     },
 
-    removeFromHistory: async (movieId) => {
-        await DataManager.removeHistoryItem(movieId);
+    removeFromHistory: async (movieId, mediaType = null) => {
+        await DataManager.removeHistoryItem(movieId, mediaType);
         renderCollection('history', 'İzleme Geçmişi');
         renderContinueWatching();
     },
@@ -258,8 +270,16 @@ const DataManager = {
         if (!data) return;
         
         let history = data.history || [];
-        // Remove existing and add to front
-        history = [movie, ...history.filter(m => m.id !== movie.id)].slice(0, 30);
+        const mediaType = getStoredMediaType(movie, currentBrowseType);
+        const historyItem = {
+            ...movie,
+            media_type: mediaType,
+            type: mediaType,
+            title: movie.title || movie.name,
+            release_date: movie.release_date || movie.first_air_date
+        };
+        const historyKey = getHistoryKey(historyItem);
+        history = [historyItem, ...history.filter(m => getHistoryKey(m) !== historyKey)].slice(0, 30);
         
         await DataManager.updateUserData({ history });
         renderContinueWatching();
@@ -274,20 +294,23 @@ function renderMovies(movies, container, type = 'movie', options = {}) {
         return;
     }
     
-    container.innerHTML = movies.map(movie => `
-        <div class="movie-card ${options.removable ? 'is-removable' : ''}" onclick="openModalById(${movie.id}, '${movie.media_type || type}')">
+    container.innerHTML = movies.map(movie => {
+        const mediaType = getStoredMediaType(movie, type);
+        return `
+        <div class="movie-card ${options.removable ? 'is-removable' : ''}" onclick="openModalById(${movie.id}, '${mediaType}')">
             <img src="${movie.poster_path ? IMG_URL + movie.poster_path : POSTER_FALLBACK}" alt="${movie.title || movie.name}" loading="lazy">
             <div class="card-info">
                 <h4>${movie.title || movie.name}</h4>
                 <p>${(movie.release_date || movie.first_air_date || '').split('-')[0]}</p>
             </div>
             ${options.removable ? `
-                <button class="remove-card-btn" title="${options.removeTitle || 'Listeden kaldır'}" onclick="event.stopPropagation(); ${options.removeAction}(${movie.id})">
+                <button class="remove-card-btn" title="${options.removeTitle || 'Listeden kaldır'}" onclick="event.stopPropagation(); ${options.removeAction}(${movie.id}, '${mediaType}')">
                     <i data-lucide="x"></i>
                 </button>
             ` : ''}
         </div>
-    `).join('');
+    `;
+    }).join('');
     
     if (window.lucide) lucide.createIcons();
 }
@@ -496,9 +519,9 @@ async function renderCollection(type, title, extra = null) {
 
 window.renderCollection = renderCollection;
 window.removeFromWatchlist = (movieId) => DataManager.removeFromWatchlist(movieId);
-window.removeFromHistory = (movieId) => DataManager.removeFromHistory(movieId);
-window.removeFromContinue = async (movieId) => {
-    await DataManager.removeHistoryItem(movieId);
+window.removeFromHistory = (movieId, mediaType = null) => DataManager.removeFromHistory(movieId, mediaType);
+window.removeFromContinue = async (movieId, mediaType = null) => {
+    await DataManager.removeHistoryItem(movieId, mediaType);
     renderContinueWatching();
 };
 
