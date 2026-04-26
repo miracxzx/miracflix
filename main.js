@@ -318,6 +318,42 @@ function getPersonPageTitle(name, department = '') {
     return `${name} ${normalized === 'Oyuncu' ? 'Filmleri' : 'Sayfası'}`;
 }
 
+function getActiveProfile(data) {
+    const profiles = data?.profiles || [{ name: 'Kullanıcı' }];
+    return profiles[getActiveProfileIndex()] || profiles[0] || { name: 'Kullanıcı' };
+}
+
+async function syncPublicProfile(data = userDataCache) {
+    const user = await AuthManager.getUser();
+    if (!user || !data) return;
+    const profile = getActiveProfile(data);
+    try {
+        await supabase.from('user_public_profiles').upsert({
+            id: user.id,
+            email: user.email,
+            display_name: profile.name || user.email?.split('@')[0] || 'Kullanıcı',
+            avatar_url: profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.name || user.id}`,
+            search_text: `${profile.name || ''} ${user.email || ''}`.toLowerCase()
+        }, { onConflict: 'id' });
+    } catch (error) {
+        console.warn('Public profile sync skipped:', error);
+    }
+}
+
+async function findPublicProfile(query) {
+    const term = query.trim().toLowerCase().replace(/[,%()]/g, ' ');
+    if (!term) return null;
+    const { data, error } = await supabase
+        .from('user_public_profiles')
+        .select('id, display_name, avatar_url, email')
+        .or(`display_name.ilike.%${term}%,email.ilike.%${term}%,search_text.ilike.%${term}%`)
+        .limit(1)
+        .maybeSingle();
+
+    if (error) throw error;
+    return data;
+}
+
 async function getCommentLikes() {
     const data = await DataManager.getUserData();
     const storedLikes = getProfileBucket(data, 'commentLikes', {});
@@ -495,7 +531,7 @@ window.openCommentProfile = async (userId, username, avatarUrl = '') => {
                 <p>${commentCount} son yorum kaydı</p>
             </div>
         </div>
-        <button class="btn-xl secondary" onclick="DataManager.addFriend('${escapeInline(safeName)}')"><i data-lucide="user-plus"></i> Arkadaş Ekle</button>
+        <button class="btn-xl secondary" onclick="DataManager.addFriend('${escapeInline(safeName)}', '${escapeInline(userId || '')}', '${escapeInline(avatarUrl)}')"><i data-lucide="user-plus"></i> Arkadaş Ekle</button>
         <div class="public-profile-section">
             <div class="section-heading-row">
                 <h3>Son izledikleri</h3>
@@ -617,6 +653,7 @@ const DataManager = {
             console.error('User Data Fetch Error:', error);
         }
         userDataCache = data;
+        if (data) syncPublicProfile(data);
         return data;
     },
     
@@ -632,7 +669,10 @@ const DataManager = {
             .upsert({ id: user.id, ...update }, { onConflict: 'id' });
             
         if (error) console.error('User Data Update Error:', error);
-        else userDataCache = { ...(userDataCache || {}), ...update };
+        else {
+            userDataCache = { ...(userDataCache || {}), ...update };
+            syncPublicProfile(userDataCache);
+        }
     },
     
     toggleWatchlist: async (movie) => {
@@ -801,14 +841,67 @@ const DataManager = {
         showToast(`${name} listesine eklendi.`);
     },
 
-    addFriend: async (friendName) => {
+    addFriend: async (friendName, friendUserId = '', friendAvatar = '') => {
         const data = await DataManager.getUserData();
-        if (!data || !friendName.trim()) return;
-        const friends = getProfileBucket(data, 'friends', []);
-        const friend = friendName.trim().slice(0, 50);
-        if (!friends.includes(friend)) friends.unshift(friend);
-        await DataManager.updateUserData({ friends: setProfileBucket(data, 'friends', friends.slice(0, 50)) });
-        renderProfileInfoView('social');
+        const user = await AuthManager.getUser();
+        if (!user) {
+            showToast('Arkadaşlık isteği göndermek için giriş yapmalısın.');
+            return;
+        }
+
+        try {
+            await syncPublicProfile(data);
+            const target = friendUserId
+                ? { id: friendUserId, display_name: friendName, avatar_url: friendAvatar }
+                : await findPublicProfile(friendName);
+
+            if (!target?.id) {
+                showToast('Kullanıcı bulunamadı. Profil adını veya e-postayı kontrol et.');
+                return;
+            }
+            if (target.id === user.id) {
+                showToast('Kendine arkadaşlık isteği gönderemezsin.');
+                return;
+            }
+
+            const activeProfile = getActiveProfile(data);
+            const { data: request, error } = await supabase
+                .from('friend_requests')
+                .insert({
+                    requester_id: user.id,
+                    receiver_id: target.id,
+                    requester_name: activeProfile.name || user.email,
+                    requester_avatar: activeProfile.avatar,
+                    receiver_name: target.display_name || friendName,
+                    receiver_avatar: target.avatar_url || friendAvatar,
+                    status: 'pending'
+                })
+                .select('id')
+                .single();
+
+            if (error) {
+                if (error.code === '23505') showToast('Bu kullanıcıya zaten bekleyen bir istek var.');
+                else throw error;
+                return;
+            }
+
+            await supabase.from('notifications').insert({
+                user_id: target.id,
+                type: 'friend_request',
+                title: 'Yeni arkadaşlık isteği',
+                body: `${activeProfile.name || user.email} sana arkadaşlık isteği gönderdi.`,
+                actor_id: user.id,
+                actor_name: activeProfile.name || user.email,
+                actor_avatar: activeProfile.avatar,
+                request_id: request.id
+            });
+
+            showToast('Arkadaşlık isteği gönderildi.');
+            renderProfileInfoView('social');
+        } catch (error) {
+            console.error('Friend request error:', error);
+            showToast('Arkadaşlık sistemi için Supabase SQL kurulumu gerekiyor.');
+        }
     },
 
     logActivity: async (activity) => {
@@ -1270,6 +1363,136 @@ window.openPersonById = async (personId, name = 'Kişi') => {
     await renderPersonPage(personId, grid);
 };
 
+async function getFriendships() {
+    const user = await AuthManager.getUser();
+    if (!user) return [];
+    const { data, error } = await supabase
+        .from('friendships')
+        .select('friend_id, friend_name, friend_avatar, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+    if (error) {
+        console.warn('Friendships could not be loaded:', error);
+        return [];
+    }
+    return data || [];
+}
+
+async function getFriendRequests(status = 'pending', direction = 'received') {
+    const user = await AuthManager.getUser();
+    if (!user) return [];
+    const column = direction === 'sent' ? 'requester_id' : 'receiver_id';
+    const { data, error } = await supabase
+        .from('friend_requests')
+        .select('*')
+        .eq(column, user.id)
+        .eq('status', status)
+        .order('created_at', { ascending: false });
+    if (error) {
+        console.warn('Friend requests could not be loaded:', error);
+        return [];
+    }
+    return data || [];
+}
+
+window.respondFriendRequest = async (requestId, action) => {
+    const fn = action === 'accept' ? 'accept_friend_request' : 'decline_friend_request';
+    const { error } = await supabase.rpc(fn, { request_uuid: requestId });
+    if (error) {
+        console.error('Friend request response error:', error);
+        showToast('İstek güncellenemedi. Supabase SQL kurulumu eksik olabilir.');
+        return;
+    }
+    showToast(action === 'accept' ? 'Arkadaşlık isteği kabul edildi.' : 'Arkadaşlık isteği reddedildi.');
+    renderNotifications();
+    renderProfileInfoView('social');
+};
+
+async function renderNotifications() {
+    const list = getEl('notif-list');
+    const badge = getEl('notif-badge');
+    if (!list) return;
+
+    const user = await AuthManager.getUser();
+    let items = [];
+    let unreadCount = 0;
+
+    if (user) {
+        try {
+            const [requests, notificationResult] = await Promise.all([
+                getFriendRequests('pending', 'received'),
+                supabase
+                    .from('notifications')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(12)
+            ]);
+
+            const notifications = notificationResult.error ? [] : notificationResult.data || [];
+            unreadCount += notifications.filter(item => !item.is_read).length + requests.length;
+            const seenRequests = new Set();
+
+            items.push(...requests.map(request => {
+                seenRequests.add(request.id);
+                return `
+                    <div class="notif-item friend-request-notif">
+                        <img src="${request.requester_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${request.requester_name}`}" class="notif-avatar" alt="${escapeHtml(request.requester_name)}">
+                        <div class="notif-info">
+                            <h4>${escapeHtml(request.requester_name)}</h4>
+                            <p>Sana arkadaşlık isteği gönderdi.</p>
+                            <div class="notif-actions">
+                                <button onclick="respondFriendRequest('${request.id}', 'accept')">Kabul et</button>
+                                <button onclick="respondFriendRequest('${request.id}', 'decline')">Reddet</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }));
+
+            items.push(...notifications
+                .filter(item => !item.request_id || !seenRequests.has(item.request_id))
+                .map(item => `
+                    <div class="notif-item">
+                        <img src="${item.actor_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${item.actor_name || 'MIRACFLIX'}`}" class="notif-avatar" alt="${escapeHtml(item.actor_name || 'Bildirim')}">
+                        <div class="notif-info">
+                            <h4>${escapeHtml(item.title || 'Bildirim')}</h4>
+                            <p>${escapeHtml(item.body || '')}</p>
+                        </div>
+                    </div>
+                `));
+        } catch (error) {
+            console.warn('App notifications skipped:', error);
+        }
+    }
+
+    try {
+        const upcoming = await apiFetch('/movie/upcoming');
+        if (getLocalPreferences().notifications && upcoming.results?.length) {
+            items.push(...upcoming.results.slice(0, 5).map(m => `
+                <div class="notif-item" onclick="openModalById(${m.id}, 'movie')">
+                    <img src="${m.poster_path ? IMG_URL + m.poster_path : POSTER_FALLBACK}" class="notif-poster">
+                    <div class="notif-info">
+                        <h4>${escapeHtml(m.title)}</h4>
+                        <p>Yakında sinemalarda.</p>
+                    </div>
+                </div>
+            `));
+        }
+    } catch {
+        // Upcoming notifications are optional.
+    }
+
+    list.innerHTML = items.join('') || '<p class="notif-empty">Şimdilik bildirim yok.</p>';
+    if (badge) badge.style.display = unreadCount > 0 ? 'block' : 'none';
+}
+
+async function markNotificationsRead() {
+    const user = await AuthManager.getUser();
+    if (!user) return;
+    await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false);
+}
+
 window.renderCollection = renderCollection;
 window.removeFromWatchlist = (movieId, mediaType = null) => DataManager.removeFromWatchlist(movieId, mediaType);
 window.removeFromWatchLater = (movieId, mediaType = null) => DataManager.removeFromWatchLater(movieId, mediaType);
@@ -1304,6 +1527,26 @@ async function renderProfileInfoView(view) {
     const activeIndex = parseInt(localStorage.getItem('activeProfileIndex') || '0');
     const activeProfile = profiles[activeIndex] || profiles[0];
     const accountCard = getEl('account-view').querySelector('.form-card');
+    const [friendships, incomingRequests, sentRequests] = user
+        ? await Promise.all([
+            getFriendships(),
+            getFriendRequests('pending', 'received'),
+            getFriendRequests('pending', 'sent')
+        ])
+        : [[], [], []];
+    const friendNames = friendships.map(friend => friend.friend_name).filter(Boolean);
+    const incomingRequestCards = incomingRequests.map(request => `
+        <div class="friend-request-card">
+            <img src="${request.requester_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${request.requester_name}`}" alt="${escapeHtml(request.requester_name)}">
+            <div>
+                <strong>${escapeHtml(request.requester_name)}</strong>
+                <span>Arkadaşlık isteği gönderdi.</span>
+            </div>
+            <button onclick="respondFriendRequest('${request.id}', 'accept')">Kabul</button>
+            <button onclick="respondFriendRequest('${request.id}', 'decline')">Reddet</button>
+        </div>
+    `).join('');
+    const sentRequestText = sentRequests.map(request => request.receiver_name).filter(Boolean).join(', ');
 
     const views = {
         account: {
@@ -1330,14 +1573,19 @@ async function renderProfileInfoView(view) {
             icon: 'users-round',
             body: `
                 <div class="settings-field">
-                    <label>Arkadaş ekle</label>
-                    <div class="inline-control"><input id="friend-name-input" type="text" placeholder="Arkadaş adı veya e-posta"><button class="btn-xl secondary" onclick="addFriendFromInput()">Ekle</button></div>
+                    <label>Arkadaşlık isteği gönder</label>
+                    <div class="inline-control"><input id="friend-name-input" type="text" placeholder="Profil adı veya e-posta"><button class="btn-xl secondary" onclick="addFriendFromInput()">Gönder</button></div>
+                </div>
+                <div class="friend-request-list">
+                    <h3>Gelen istekler</h3>
+                    ${incomingRequestCards || '<p class="muted-note">Bekleyen arkadaşlık isteği yok.</p>'}
                 </div>
                 <div class="info-grid">
-                    <div class="help-item"><strong>Arkadaşlar</strong><span>${getProfileBucket(data, 'friends', []).join(', ') || 'Henüz arkadaş eklenmedi.'}</span></div>
+                    <div class="help-item"><strong>Arkadaşlar</strong><span>${friendNames.join(', ') || getProfileBucket(data, 'friends', []).join(', ') || 'Henüz arkadaş eklenmedi.'}</span></div>
+                    <div class="help-item"><strong>Gönderilen istekler</strong><span>${sentRequestText || 'Bekleyen gönderilmiş istek yok.'}</span></div>
                     <div class="help-item"><strong>Arkadaşların ne izliyor?</strong><span>${getProfileBucket(data, 'activityFeed', []).slice(0, 4).map(item => item.text).join(' · ') || 'Aktivite akışı boş.'}</span></div>
                 </div>
-                <div class="page-hero-card"><span>Ortak liste</span><h3>Sonra İzle listeni arkadaşlarınla planlamak için hazır alan.</h3><p>Bu sürümde aynı profil içinde saklanır; gerçek çok kullanıcılı paylaşım için ayrı Supabase tablo/policy katmanı gerekir.</p></div>
+                <div class="page-hero-card"><span>Ortak liste</span><h3>Sonra İzle listeni arkadaşlarınla planlamak için hazır alan.</h3><p>Arkadaşlık sistemi artık istek, kabul ve bildirim akışıyla çalışır. Ortak listeler bir sonraki sosyal katman için hazır bekliyor.</p></div>
             `
         },
         lists: {
@@ -1639,6 +1887,7 @@ async function updateProfileUI() {
     const profiles = data?.profiles || [{ name: 'Kullanıcı' }];
     const activeIndex = parseInt(localStorage.getItem('activeProfileIndex') || '0');
     const activeProfile = profiles[activeIndex] || profiles[0];
+    syncPublicProfile({ ...(data || {}), profiles });
     
     profileContainer.innerHTML = `<img src="${activeProfile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${activeProfile.name}`}">`;
     
@@ -1788,23 +2037,7 @@ async function init() {
     await DataManager.migrateUserData();
     renderContinueWatching();
     renderWatchLater();
-    if (isLoggedIn) {
-        // Notifications (Upcoming)
-        apiFetch('/movie/upcoming').then(d => {
-            if (getLocalPreferences().notifications && d.results?.length) {
-                getEl('notif-badge').style.display = 'block';
-                getEl('notif-list').innerHTML = d.results.slice(0, 5).map(m => `
-                    <div class="notif-item" onclick="openModalById(${m.id}, 'movie')">
-                        <img src="${IMG_URL + m.poster_path}" class="notif-poster">
-                        <div class="notif-info">
-                            <h4>${m.title}</h4>
-                            <p>Yakında Sinemalarda!</p>
-                        </div>
-                    </div>
-                `).join('');
-            }
-        });
-    }
+    renderNotifications();
 
     // 3. Remove Loading Intro once the first content pass has had a chance to land.
     setTimeout(revealApp, 1500);
@@ -1825,6 +2058,7 @@ document.addEventListener('DOMContentLoaded', () => {
     supabase.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
             updateProfileUI();
+            renderNotifications();
             if (event === 'SIGNED_IN') {
                 renderContinueWatching();
                 renderWatchLater();
@@ -1889,6 +2123,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const drop = getEl('notif-dropdown');
         drop.style.display = drop.style.display === 'none' ? 'block' : 'none';
         getEl('notif-badge').style.display = 'none';
+        if (drop.style.display === 'block') {
+            renderNotifications();
+            markNotificationsRead();
+        }
     });
 
     // Surprise (Shuffle)
