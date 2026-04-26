@@ -573,6 +573,15 @@ window.addCurrentToCustomList = () => {
     DataManager.addToCustomList(getEl('custom-list-name-input')?.value || '', currentMovie);
 };
 
+window.createCustomListFromInput = () => {
+    DataManager.createCustomList(getEl('custom-list-name-input')?.value || '');
+};
+
+window.createSharedListFromInputs = () => {
+    const names = Array.from(document.querySelectorAll('#shared-list-friends input:checked')).map(input => input.value);
+    DataManager.createSharedList(getEl('shared-list-name-input')?.value || '', names);
+};
+
 window.openCustomList = async (encodedName) => {
     const name = decodeURIComponent(encodedName);
     const data = await DataManager.getUserData();
@@ -582,7 +591,29 @@ window.openCustomList = async (encodedName) => {
     getEl('browse-view').style.display = 'none';
     getEl('collection-form-container').style.display = 'none';
     renderMovies(lists[name] || [], getEl('collection-grid'), 'movie', {
+        removable: true,
+        removeAction: 'removeFromCustomList',
+        removeArgs: `'${encodeURIComponent(name)}'`,
+        removeTitle: 'Listeden kaldır',
         emptyText: 'Bu listede henüz içerik yok.'
+    });
+};
+
+window.openSharedList = async (encodedName) => {
+    const name = decodeURIComponent(encodedName);
+    const data = await DataManager.getUserData();
+    const sharedLists = getProfileBucket(data, 'sharedLists', {});
+    const list = sharedLists[name];
+    getEl('collection-title').innerText = name;
+    getEl('collection-grid').style.display = 'grid';
+    getEl('browse-view').style.display = 'none';
+    getEl('collection-form-container').style.display = 'none';
+    renderMovies(list?.items || [], getEl('collection-grid'), 'movie', {
+        removable: true,
+        removeAction: 'removeFromSharedList',
+        removeArgs: `'${encodeURIComponent(name)}'`,
+        removeTitle: 'Ortak listeden kaldır',
+        emptyText: 'Bu ortak listede henüz içerik yok.'
     });
 };
 
@@ -837,7 +868,10 @@ const DataManager = {
 
     addToCustomList: async (listName, movie = currentMovie) => {
         const data = await DataManager.getUserData();
-        if (!data || !movie || !listName.trim()) return;
+        if (!data || !movie || !listName.trim()) {
+            showToast('Liste adı ve açık içerik gerekli.');
+            return;
+        }
         const lists = getProfileBucket(data, 'customLists', {});
         const name = listName.trim().slice(0, 40);
         const item = normalizeStoredMedia(movie, currentBrowseType);
@@ -845,6 +879,91 @@ const DataManager = {
         lists[name] = [item, ...current.filter(m => !isSameMedia(m, item))].slice(0, 80);
         await DataManager.updateUserData({ customLists: setProfileBucket(data, 'customLists', lists) });
         showToast(`${name} listesine eklendi.`);
+        renderListPicker();
+    },
+
+    createCustomList: async (listName) => {
+        const data = await DataManager.getUserData();
+        if (!data || !listName.trim()) return showToast('Liste adı yazmalısın.');
+        const lists = getProfileBucket(data, 'customLists', {});
+        const name = listName.trim().slice(0, 40);
+        if (!lists[name]) lists[name] = [];
+        await DataManager.updateUserData({ customLists: setProfileBucket(data, 'customLists', lists) });
+        showToast(`${name} listesi oluşturuldu.`);
+        renderProfileInfoView('lists');
+    },
+
+    removeFromCustomList: async (movieId, mediaType = null, encodedName = '') => {
+        const data = await DataManager.getUserData();
+        const name = decodeURIComponent(encodedName);
+        const lists = getProfileBucket(data, 'customLists', {});
+        const targetKey = mediaType ? `${mediaType}:${movieId}` : null;
+        lists[name] = (lists[name] || []).filter(m => targetKey ? getHistoryKey(m) !== targetKey : m.id !== movieId);
+        await DataManager.updateUserData({ customLists: setProfileBucket(data, 'customLists', lists) });
+        openCustomList(encodeURIComponent(name));
+    },
+
+    deleteCustomList: async (encodedName) => {
+        const data = await DataManager.getUserData();
+        const name = decodeURIComponent(encodedName);
+        const lists = getProfileBucket(data, 'customLists', {});
+        delete lists[name];
+        await DataManager.updateUserData({ customLists: setProfileBucket(data, 'customLists', lists) });
+        showToast(`${name} listesi silindi.`);
+        renderProfileInfoView('lists');
+    },
+
+    createSharedList: async (listName, collaboratorNames = []) => {
+        const data = await DataManager.getUserData();
+        if (!data || !listName.trim()) return showToast('Ortak liste adı yazmalısın.');
+        const sharedLists = getProfileBucket(data, 'sharedLists', {});
+        const name = listName.trim().slice(0, 40);
+        const existing = sharedLists[name] || {};
+        sharedLists[name] = {
+            name,
+            collaborators: collaboratorNames.filter(Boolean),
+            items: existing.items || [],
+            created_at: existing.created_at || new Date().toISOString()
+        };
+        await DataManager.updateUserData({ sharedLists: setProfileBucket(data, 'sharedLists', sharedLists) });
+        showToast(`${name} ortak listesi hazır.`);
+        renderProfileInfoView('lists');
+    },
+
+    addToSharedList: async (listName, movie = currentMovie) => {
+        const data = await DataManager.getUserData();
+        if (!data || !movie || !listName.trim()) return showToast('Ortak liste ve açık içerik gerekli.');
+        const sharedLists = getProfileBucket(data, 'sharedLists', {});
+        const name = listName.trim();
+        const current = sharedLists[name] || { name, collaborators: [], items: [] };
+        const item = normalizeStoredMedia(movie, currentMovie?.type || currentBrowseType);
+        current.items = [item, ...(current.items || []).filter(m => !isSameMedia(m, item))].slice(0, 80);
+        sharedLists[name] = current;
+        await DataManager.updateUserData({ sharedLists: setProfileBucket(data, 'sharedLists', sharedLists) });
+        showToast(`${name} ortak listesine eklendi.`);
+        renderListPicker();
+    },
+
+    removeFromSharedList: async (movieId, mediaType = null, encodedName = '') => {
+        const data = await DataManager.getUserData();
+        const name = decodeURIComponent(encodedName);
+        const sharedLists = getProfileBucket(data, 'sharedLists', {});
+        const targetKey = mediaType ? `${mediaType}:${movieId}` : null;
+        if (sharedLists[name]) {
+            sharedLists[name].items = (sharedLists[name].items || []).filter(m => targetKey ? getHistoryKey(m) !== targetKey : m.id !== movieId);
+        }
+        await DataManager.updateUserData({ sharedLists: setProfileBucket(data, 'sharedLists', sharedLists) });
+        openSharedList(encodeURIComponent(name));
+    },
+
+    deleteSharedList: async (encodedName) => {
+        const data = await DataManager.getUserData();
+        const name = decodeURIComponent(encodedName);
+        const sharedLists = getProfileBucket(data, 'sharedLists', {});
+        delete sharedLists[name];
+        await DataManager.updateUserData({ sharedLists: setProfileBucket(data, 'sharedLists', sharedLists) });
+        showToast(`${name} ortak listesi silindi.`);
+        renderProfileInfoView('lists');
     },
 
     addFriend: async (friendName, friendUserId = '', friendAvatar = '') => {
@@ -947,6 +1066,7 @@ function renderMovies(movies, container, type = 'movie', options = {}) {
         const progress = userDataCache ? getProgressFor(userDataCache, { ...movie, media_type: mediaType }) : null;
         const completed = userDataCache ? isCompleted(userDataCache, { ...movie, media_type: mediaType }) : false;
         const lastEpisode = movie.last_episode;
+        const removeArgs = options.removeArgs ? `, ${options.removeArgs}` : '';
         return `
         <div class="movie-card ${options.removable ? 'is-removable' : ''} ${completed ? 'is-watched' : ''}" onclick="openModalById(${movie.id}, '${mediaType}')">
             <img src="${movie.poster_path ? IMG_URL + movie.poster_path : POSTER_FALLBACK}" alt="${movie.title || movie.name}" loading="lazy">
@@ -958,7 +1078,7 @@ function renderMovies(movies, container, type = 'movie', options = {}) {
             </div>
             ${progress?.percent ? `<div class="card-progress"><span style="width:${progress.percent}%"></span></div>` : ''}
             ${options.removable ? `
-                <button class="remove-card-btn" title="${options.removeTitle || 'Listeden kaldır'}" onclick="event.stopPropagation(); ${options.removeAction}(${movie.id}, '${mediaType}')">
+                <button class="remove-card-btn" title="${options.removeTitle || 'Listeden kaldır'}" onclick="event.stopPropagation(); ${options.removeAction}(${movie.id}, '${mediaType}'${removeArgs})">
                     <i data-lucide="x"></i>
                 </button>
             ` : ''}
@@ -1401,6 +1521,63 @@ async function getFriendRequests(status = 'pending', direction = 'received') {
     return data || [];
 }
 
+async function renderListPicker() {
+    const panel = document.querySelector('.list-picker-popover');
+    if (!panel) return;
+    const data = await DataManager.getUserData();
+    const lists = getProfileBucket(data, 'customLists', {});
+    const sharedLists = getProfileBucket(data, 'sharedLists', {});
+    const listButtons = Object.keys(lists).map(name => `
+        <button type="button" onclick="DataManager.addToCustomList('${escapeInline(name)}')">
+            <span>${escapeHtml(name)}</span><em>${lists[name].length}</em>
+        </button>
+    `).join('');
+    const sharedButtons = Object.values(sharedLists).map(list => `
+        <button type="button" onclick="DataManager.addToSharedList('${escapeInline(list.name)}')">
+            <span>${escapeHtml(list.name)}</span><em>${(list.items || []).length}</em>
+        </button>
+    `).join('');
+
+    panel.innerHTML = `
+        <div class="list-picker-head">
+            <strong>Listeye ekle</strong>
+            <button type="button" onclick="closeListPicker()"><i data-lucide="x"></i></button>
+        </div>
+        <div class="settings-field">
+            <label>Yeni kişisel liste</label>
+            <div class="inline-control">
+                <input id="quick-list-name-input" type="text" placeholder="Pazar filmleri">
+                <button class="btn-xl secondary" onclick="DataManager.addToCustomList(document.getElementById('quick-list-name-input').value)">Ekle</button>
+            </div>
+        </div>
+        <div class="list-picker-section">
+            <h4>Kişisel listeler</h4>
+            <div class="list-picker-buttons">${listButtons || '<p class="muted-note">Henüz kişisel listen yok.</p>'}</div>
+        </div>
+        <div class="list-picker-section">
+            <h4>Ortak listeler</h4>
+            <div class="list-picker-buttons">${sharedButtons || '<p class="muted-note">Henüz ortak listen yok.</p>'}</div>
+        </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+}
+
+window.openListPicker = async () => {
+    if (!currentMovie) return showToast('Önce bir içerik açmalısın.');
+    let panel = document.querySelector('.list-picker-popover');
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.className = 'list-picker-popover';
+        document.body.appendChild(panel);
+    }
+    panel.classList.add('show');
+    await renderListPicker();
+};
+
+window.closeListPicker = () => {
+    document.querySelector('.list-picker-popover')?.classList.remove('show');
+};
+
 window.respondFriendRequest = async (requestId, action) => {
     const fn = action === 'accept' ? 'accept_friend_request' : 'decline_friend_request';
     const { error } = await supabase.rpc(fn, { request_uuid: requestId });
@@ -1503,6 +1680,8 @@ window.renderCollection = renderCollection;
 window.removeFromWatchlist = (movieId, mediaType = null) => DataManager.removeFromWatchlist(movieId, mediaType);
 window.removeFromWatchLater = (movieId, mediaType = null) => DataManager.removeFromWatchLater(movieId, mediaType);
 window.removeFromHistory = (movieId, mediaType = null) => DataManager.removeFromHistory(movieId, mediaType);
+window.removeFromCustomList = (movieId, mediaType = null, encodedName = '') => DataManager.removeFromCustomList(movieId, mediaType, encodedName);
+window.removeFromSharedList = (movieId, mediaType = null, encodedName = '') => DataManager.removeFromSharedList(movieId, mediaType, encodedName);
 window.removeFromContinue = async (movieId, mediaType = null) => {
     await DataManager.removeHistoryItem(movieId, mediaType);
     renderContinueWatching();
@@ -1599,13 +1778,32 @@ async function renderProfileInfoView(view) {
             icon: 'list-plus',
             body: (() => {
                 const lists = getProfileBucket(data, 'customLists', {});
-                const buttons = Object.keys(lists).map(name => `<button class="list-chip" onclick="openCustomList('${encodeURIComponent(name)}')">${name}<span>${lists[name].length}</span></button>`).join('');
+                const sharedLists = getProfileBucket(data, 'sharedLists', {});
+                const buttons = Object.keys(lists).map(name => `
+                    <div class="list-manage-chip">
+                        <button class="list-chip" onclick="openCustomList('${encodeURIComponent(name)}')">${name}<span>${lists[name].length}</span></button>
+                        <button class="icon-danger-btn" title="Listeyi sil" onclick="DataManager.deleteCustomList('${encodeURIComponent(name)}')"><i data-lucide="trash-2"></i></button>
+                    </div>
+                `).join('');
+                const friendOptions = friendNames.map(name => `<label><input type="checkbox" value="${escapeHtml(name)}"> ${escapeHtml(name)}</label>`).join('');
+                const sharedButtons = Object.values(sharedLists).map(list => `
+                    <div class="list-manage-chip">
+                        <button class="list-chip shared" onclick="openSharedList('${encodeURIComponent(list.name)}')">${escapeHtml(list.name)}<span>${(list.items || []).length}</span></button>
+                        <button class="icon-danger-btn" title="Ortak listeyi sil" onclick="DataManager.deleteSharedList('${encodeURIComponent(list.name)}')"><i data-lucide="trash-2"></i></button>
+                    </div>
+                `).join('');
                 return `
                     <div class="settings-field">
-                        <label>Şu an açık içerik için liste adı</label>
-                        <div class="inline-control"><input id="custom-list-name-input" type="text" placeholder="En iyi korkularım"><button class="btn-xl secondary" onclick="addCurrentToCustomList()">Ekle</button></div>
+                        <label>Yeni kişisel liste</label>
+                        <div class="inline-control"><input id="custom-list-name-input" type="text" placeholder="En iyi korkularım"><button class="btn-xl secondary" onclick="createCustomListFromInput()">Oluştur</button></div>
                     </div>
-                    <div class="list-chip-grid">${buttons || '<p class="muted-note">Henüz özel listen yok. Bir içerik detayından liste adı yazıp ekleyebilirsin.</p>'}</div>
+                    <div class="list-chip-grid">${buttons || '<p class="muted-note">Henüz özel listen yok. Buradan liste oluşturup içerik detayından listeye ekleyebilirsin.</p>'}</div>
+                    <div class="settings-field">
+                        <label>Ortak liste oluştur</label>
+                        <div class="inline-control"><input id="shared-list-name-input" type="text" placeholder="Kanka film gecesi"><button class="btn-xl secondary" onclick="createSharedListFromInputs()">Oluştur</button></div>
+                    </div>
+                    <div class="friend-checkbox-grid" id="shared-list-friends">${friendOptions || '<p class="muted-note">Ortak liste için önce arkadaş eklemelisin.</p>'}</div>
+                    <div class="list-chip-grid">${sharedButtons || '<p class="muted-note">Henüz ortak listen yok.</p>'}</div>
                 `;
             })()
         },
@@ -2225,6 +2423,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Movie Modal Buttons
     getEl('add-to-watchlist')?.addEventListener('click', () => DataManager.toggleWatchlist(currentMovie));
     getEl('add-to-watchlater')?.addEventListener('click', () => DataManager.toggleWatchLater(currentMovie));
+    getEl('add-to-custom-list')?.addEventListener('click', openListPicker);
     getEl('mark-completed-btn')?.addEventListener('click', () => DataManager.markCompleted(currentMovie));
     getEl('hide-content-btn')?.addEventListener('click', () => DataManager.hideItem(currentMovie));
     getEl('share-content-btn')?.addEventListener('click', shareCurrentContent);
