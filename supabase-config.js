@@ -1,0 +1,3 @@
+// Supabase Configuration
+export const SUPABASE_URL = 'https://lecsjpadealmgmoaltwn.supabase.co';
+export const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlY3NqcGFkZWFsbWdtb2FsdHduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDUzMzksImV4cCI6MjA5MjcyMTMzOX0.xC2D2Bno0xvPJkuDuy_zfVL2v1lfP_03FfTF0-O2iPM';

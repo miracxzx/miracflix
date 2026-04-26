@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIRACFLIX | Film ve Dizi İzle</title>
+    <meta name="description" content="En yeni film ve dizileri IMDb kalitesinde izleyin.">
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+    <!-- Startup Intro -->
+    <div id="startup-intro">
+        <div class="intro-content">
+            <div class="intro-logo">
+                <img src="/logo.png" alt="MIRACFLIX" class="brand-logo-img intro-anim-logo">
+            </div>
+            <div class="intro-line"></div>
+        </div>
+    </div>
+
+    <div id="app" style="display: none;">
+        <!-- Navbar -->
+        <nav id="navbar" class="navbar">
+            <div class="nav-left">
+                <div class="logo">
+                    <img src="/logo.png" alt="MIRACFLIX" class="brand-logo-img">
+                </div>
+                <ul class="nav-links">
+                    <li><a href="#" id="nav-home" class="active">Ana Sayfa</a></li>
+                    <li><a href="#" id="nav-tv">Diziler</a></li>
+                    <li><a href="#" id="nav-movies">Filmler</a></li>
+                    <li><a href="#" id="nav-popular">Yeni ve Popüler</a></li>
+                </ul>
+            </div>
+            <div class="nav-right">
+                <button id="surprise-btn" class="nav-icon-btn" title="Rastgele İçerik"><i data-lucide="shuffle"></i></button>
+                <div class="notification-center">
+                    <button id="notif-btn" class="nav-icon-btn"><i data-lucide="bell"></i><span class="notif-badge" id="notif-badge" style="display:none;"></span></button>
+                    <!-- Notification Dropdown -->
+                    <div id="notif-dropdown" class="notif-dropdown" style="display: none;">
+                        <div class="notif-header">Bildirimler</div>
+                        <div id="notif-list" class="notif-list">
+                            <p class="notif-empty">Yükleniyor...</p>
+                        </div>
+                    </div>
+                </div>
+                <button id="search-btn" class="search-icon-btn"><i data-lucide="search"></i></button>
+                <div class="user-profile" id="user-profile-btn">
+                    <img src="" alt="Profile">
+                </div>
+            </div>
+        </nav>
+
+        <!-- Search Overlay -->
+        <div id="search-overlay" class="search-overlay">
+            <div class="search-overlay-content">
+                <input type="text" id="search-input" placeholder="Film, dizi, oyuncu...">
+                <button id="close-search"><i data-lucide="x"></i></button>
+            </div>
+        </div>
+
+        <!-- Hero Section -->
+        <header id="hero" class="hero">
+            <div class="hero-overlay"></div>
+            <div class="hero-content">
+                <h1 id="hero-title" class="hero-title">Yükleniyor...</h1>
+                <p id="hero-overview" class="hero-overview"></p>
+                <div class="hero-btns">
+                    <button id="hero-play-btn" class="btn btn-primary"><i data-lucide="play"></i> Oynat</button>
+                    <button id="hero-info-btn" class="btn btn-secondary"><i data-lucide="info"></i> Daha Fazla Bilgi</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Content -->
+        <main class="content">
+            <!-- Continue Watching Row -->
+            <section id="continue-watching-section" class="movie-row" style="display: none;">
+                <h2>İzlemeye Devam Et</h2>
+                <div class="slider-container">
+                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <div id="continue-watching-list" class="movie-list"></div>
+                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                </div>
+            </section>
+
+            <section id="my-list-section" class="movie-row" style="display: none;">
+                <h2>Listem</h2>
+                <div class="slider-container">
+                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <div id="my-list" class="movie-list"></div>
+                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                </div>
+            </section>
+
+            <section class="movie-row">
+                <h2>Popüler Filmler</h2>
+                <div class="slider-container">
+                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <div id="popular-movies" class="movie-list"></div>
+                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                </div>
+            </section>
+
+            <section class="movie-row">
+                <h2>Trend Diziler</h2>
+                <div class="slider-container">
+                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <div id="trending-tv" class="movie-list"></div>
+                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                </div>
+            </section>
+
+            <section class="movie-row">
+                <h2>En Çok Oy Alanlar</h2>
+                <div class="slider-container">
+                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <div id="top-rated" class="movie-list"></div>
+                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Movie Detail Modal -->
+        <div id="movie-modal" class="modal">
+            <div class="modal-backdrop-bg" id="modal-bg"></div>
+            <div class="modal-overlay-gradient"></div>
+            
+            <button class="close-modal" title="Geri Dön"><i data-lucide="arrow-left"></i></button>
+            
+            <div class="modal-content">
+                <div class="modal-hero">
+                    <img src="" id="modal-poster-img" class="modal-poster" alt="Poster">
+                    <div class="modal-main-info">
+                        <h1 id="modal-title">Film Adı</h1>
+                        <div class="modal-meta-row">
+                            <span id="modal-year">2024</span>
+                            <span class="rating-badge" id="modal-rating" title="IMDb Puanı">8.5</span>
+                            <div class="mirac-score-wrapper" style="display: flex; align-items: center; gap: 10px;">
+                                <span class="mirac-score-badge" id="mirac-score-val" title="MiracScore (Kullanıcı Puanı)">0.0</span>
+                                <div class="rating-stars" id="user-rating-widget">
+                                    <span class="star" data-value="1">★</span>
+                                    <span class="star" data-value="2">★</span>
+                                    <span class="star" data-value="3">★</span>
+                                    <span class="star" data-value="4">★</span>
+                                    <span class="star" data-value="5">★</span>
+                                    <span class="star" data-value="6">★</span>
+                                    <span class="star" data-value="7">★</span>
+                                    <span class="star" data-value="8">★</span>
+                                    <span class="star" data-value="9">★</span>
+                                    <span class="star" data-value="10">★</span>
+                                </div>
+                            </div>
+                            <span id="modal-type-badge" style="text-transform: uppercase; border: 1px solid #666; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Movie</span>
+                        </div>
+                        <p id="modal-overview" class="modal-overview-large"></p>
+                        
+                        <div class="modal-btn-group">
+                            <button id="modal-play-btn" class="btn-xl primary"><i data-lucide="play"></i> Oynat</button>
+                            <button id="modal-trailer-btn" class="btn-xl secondary"><i data-lucide="film"></i> Fragman</button>
+                            <button id="add-to-watchlist" class="btn-xl secondary" style="padding: 18px;"><i data-lucide="plus"></i></button>
+                        </div>
+
+                        <div id="modal-cast" style="font-size: 1.1rem; color: #888; margin-top: 20px;">
+                            <strong>Oyuncular:</strong> <span id="modal-cast-list"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-info-area">
+                    <div class="similar-content-wrapper">
+                        <h3 style="font-size: 2rem; margin-bottom: 30px;">Benzer İçerikler</h3>
+                        <div id="similar-content-list" class="similar-grid"></div>
+                    </div>
+
+                    <!-- Comments Section -->
+                    <div class="comments-section" style="margin-top: 80px; padding-bottom: 100px;">
+                        <h3 style="font-size: 2rem; margin-bottom: 30px;"><i data-lucide="message-square"></i> Yorumlar</h3>
+                        <div class="comment-input-area" style="background: rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; margin-bottom: 40px;">
+                            <textarea id="comment-textarea" placeholder="Bu içerik hakkında ne düşünüyorsun?" style="width: 100%; background: transparent; border: none; color: white; font-size: 1.1rem; resize: none; outline: none; min-height: 100px;"></textarea>
+                            <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
+                                <button id="post-comment-btn" class="btn btn-primary" style="padding: 10px 40px;">Gönder</button>
+                            </div>
+                        </div>
+                        <div id="comments-list" class="comments-list" style="display: flex; flex-direction: column; gap: 20px;">
+                            <!-- Comments will load here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Collection/Browse Overlay -->
+        <div id="collection-overlay" class="collection-overlay" style="display: none;">
+            <div class="collection-header">
+                <button id="close-collection"><i data-lucide="arrow-left"></i> Geri Dön</button>
+                <h1 id="collection-title">Liste Başlığı</h1>
+            </div>
+            
+            <div id="collection-grid" class="collection-grid"></div>
+
+            <!-- Browse View with Filters -->
+            <div id="browse-view" style="display: none; height: 100%; padding: 0 5%;">
+                <div class="browse-layout" style="display: flex; gap: 30px; height: calc(100vh - 150px); margin-top: 30px;">
+                    <div class="browse-main" style="flex: 1; overflow-y: auto; padding-bottom: 50px; scroll-behavior: smooth;">
+                        <div id="browse-grid" class="collection-grid browse-grid-container"></div>
+                        <div id="pagination-controls" class="pagination-area" style="display: flex; justify-content: center; gap: 10px; margin-top: 40px; padding-bottom: 40px;"></div>
+                    </div>
+                    <div class="browse-sidebar">
+                        <h3 style="margin-bottom: 20px; font-size: 1.2rem; display: flex; align-items: center; gap: 10px;"><i data-lucide="filter"></i> Filtreler</h3>
+                        
+                        <div class="filter-group">
+                            <label>Tür</label>
+                            <select id="filter-genre">
+                                <option value="">Tümü</option>
+                                <option value="28">Aksiyon</option>
+                                <option value="12">Macera</option>
+                                <option value="16">Animasyon</option>
+                                <option value="35">Komedi</option>
+                                <option value="80">Suç</option>
+                                <option value="18">Dram</option>
+                                <option value="14">Fantastik</option>
+                                <option value="27">Korku</option>
+                                <option value="10749">Romantik</option>
+                                <option value="878">Bilim Kurgu</option>
+                                <option value="53">Gerilim</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Yıl</label>
+                            <input type="number" id="filter-year" placeholder="Örn: 2024">
+                        </div>
+
+                        <div class="filter-group">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <label>Min. Puan</label>
+                                <span id="rating-val" style="color: var(--primary-color); font-weight: 600;">0+</span>
+                            </div>
+                            <input type="range" id="filter-rating" min="0" max="10" step="0.5" value="0">
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Sıralama</label>
+                            <select id="filter-sort">
+                                <option value="popularity.desc">Popülerlik</option>
+                                <option value="primary_release_date.desc">Yeniye Göre</option>
+                                <option value="vote_average.desc">Puan (Yüksek)</option>
+                            </select>
+                        </div>
+
+                        <button id="apply-filters-btn" class="btn btn-primary" style="width: 100%; padding: 15px;">Filtreleri Uygula</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Management View -->
+            <div id="collection-form-container" class="collection-form-container" style="display: none;">
+                <div id="profiles-view" class="profile-form-view" style="display: none;">
+                    <h1>Kim İzliyor?</h1>
+                    <div class="profiles-container"></div>
+                    <button id="manage-profiles-btn" class="btn-xl secondary" style="margin-top: 40px; padding: 12px 30px; font-size: 1rem;">Profilleri Yönet</button>
+                </div>
+
+                <!-- Account/Settings/Help Views will be handled by JS -->
+                <div id="account-view" class="profile-form-view" style="display: none;">
+                    <div class="form-card">
+                        <h2>Hesap Bilgileri</h2>
+                        <!-- Content handled by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Auth Modal -->
+        <div id="auth-modal" class="modal auth-modal" style="display: none;">
+            <div class="auth-content">
+                <button class="close-auth"><i data-lucide="x"></i></button>
+                <h2 id="auth-title">Giriş Yap</h2>
+                <form id="auth-form">
+                    <div class="auth-input-group">
+                        <label>E-posta</label>
+                        <input type="email" id="auth-email" placeholder="E-posta" required>
+                    </div>
+                    <div class="auth-input-group">
+                        <label>Şifre</label>
+                        <input type="password" id="auth-password" placeholder="Şifre" required>
+                    </div>
+                    <button type="submit" class="btn btn-login w-100" id="auth-submit-btn">Devam Et</button>
+                </form>
+                <p class="auth-switch">Hesabın yok mu? <a href="#" id="switch-auth">Kayıt Ol</a></p>
+            </div>
+        </div>
+
+        <!-- Profile Settings Modal -->
+        <div id="profile-settings-modal" class="modal">
+            <div class="modal-content profile-content">
+                <button class="close-profile-settings"><i data-lucide="x"></i></button>
+                <div id="profile-main-view">
+                    <div class="profile-header">
+                        <h2>Profil Ayarları</h2>
+                        <div class="profile-user-info">
+                            <div class="profile-avatar-wrapper">
+                                <img src="" id="profile-img-large" alt="Profile">
+                            </div>
+                            <div class="profile-details">
+                                <h3 id="profile-name-display">Kullanıcı</h3>
+                                <p id="profile-email-display">email@example.com</p>
+                            </div>
+                        </div>
+                    </div>
+                    <ul class="profile-menu">
+                        <li id="menu-profiles-manage"><i data-lucide="users"></i> Profil Yönetimi</li>
+                        <li id="menu-favorites"><i data-lucide="heart"></i> Favorilerim</li>
+                        <li id="menu-history"><i data-lucide="history"></i> İzleme Geçmişi</li>
+                        <li id="menu-account"><i data-lucide="user"></i> Hesap</li>
+                        <li id="menu-settings"><i data-lucide="settings"></i> Ayarlar</li>
+                        <li id="menu-help"><i data-lucide="help-circle"></i> Yardım Merkezi</li>
+                        <li id="profile-logout" class="logout"><i data-lucide="log-out"></i> Çıkış Yap</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add/Edit Profile Modal (Nested for Profile Management) -->
+        <div id="edit-profile-modal" class="modal" style="z-index: 9000; background: rgba(0,0,0,0.95); align-items: center; justify-content: center;">
+            <div class="form-card" style="max-width: 450px; width: 90%; text-align: center;">
+                <h2 id="edit-profile-title">Profili Düzenle</h2>
+                <div class="profile-avatar-wrapper" style="margin: 30px auto; width: 150px; height: 150px;">
+                    <img src="" id="edit-profile-preview" style="width: 100%; height: 100%; border-radius: 8px; object-fit: cover;">
+                </div>
+                <div class="input-group">
+                    <label>Profil Adı</label>
+                    <input type="text" id="edit-profile-name-input" placeholder="İsim">
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 30px;">
+                    <button id="save-edit-profile-btn" class="btn btn-primary w-100">Kaydet</button>
+                    <button id="delete-profile-btn" class="btn-danger-outline w-100">Profili Sil</button>
+                    <button id="cancel-edit-profile-btn" class="btn-dark-w100">İptal</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Player Overlay -->
+        <div id="player-sub-overlay" class="player-sub-overlay" style="display: none;">
+            <button class="close-player"><i data-lucide="arrow-left"></i> Geri Dön</button>
+            <div id="player-container" class="player-container"></div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-links">
+                <a href="#" data-footer-page="subtitles">Seslendirme ve Alt Yazı</a>
+                <a href="#" data-footer-page="media">Medya Merkezi</a>
+                <a href="#" data-footer-page="privacy">Gizlilik</a>
+                <a href="#" data-footer-page="terms">Kullanım Koşulları</a>
+                <a href="#" data-footer-page="help">Yardım Merkezi</a>
+                <a href="#" data-footer-page="company">Kurumsal Bilgiler</a>
+                <a href="#" data-footer-page="contact">Bize Ulaşın</a>
+            </div>
+            <div class="footer-copyright">
+                © 2026 MIRACFLIX | Tüm hakları saklıdır.
+            </div>
+        </footer>
+    </div>
+    <script type="module" src="main.js"></script>
+</body>
+
+</html>

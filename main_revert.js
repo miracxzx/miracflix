@@ -1,0 +1,2 @@
+"import { SUPABASE_URL, SUPABASE_KEY } from './supabase-config.js';\n\n// Initialize Supabase Client\nconst { createClient } = window.supabase;\nconst supabase = createClient(SUPABASE_URL, SUPABASE_KEY);\n\n// Configuration\nconst API_KEY = '20a0abcbeaf243
+<truncated 26558 bytes>
