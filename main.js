@@ -50,6 +50,12 @@ const SEARCH_TOPIC_KEYWORDS = {
     courtroom: 'courtroom legal',
     'based on true story': 'based on true story'
 };
+const APP_PRODUCTION_URL = 'https://miracflix.netlify.app';
+
+function getAuthRedirectUrl() {
+    const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    return isLocal ? APP_PRODUCTION_URL : window.location.origin;
+}
 
 const getEl = (id) => document.getElementById(id);
 
@@ -2196,7 +2202,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const { error } = isLoginMode 
             ? await supabase.auth.signInWithPassword({ email, password })
-            : await supabase.auth.signUp({ email, password });
+            : await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    emailRedirectTo: getAuthRedirectUrl()
+                }
+            });
             
         if (error) alert('Hata: ' + error.message);
         else location.reload();
