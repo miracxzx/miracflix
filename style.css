@@ -71,6 +71,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .nav-icon-btn:hover, .search-icon-btn:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.15); }
 .notification-center { position: relative; }
+body.notifications-off .notification-center { display: none; }
 .notif-badge { position: absolute; top: 7px; right: 7px; width: 9px; height: 9px; background: var(--primary-color); border-radius: 50%; }
 .user-profile { width: 34px; height: 34px; border-radius: 4px; overflow: hidden; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); }
 .user-profile.logged-out { width: auto; height: auto; overflow: visible; border: 0; }
@@ -328,10 +329,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     display: flex; align-items: center; justify-content: space-between; gap: 18px;
     padding: 15px 0; border-bottom: 1px solid rgba(255,255,255,0.08);
 }
+.settings-toggle span { display: flex; flex-direction: column; gap: 5px; }
+.settings-toggle small { color: var(--text-muted); line-height: 1.45; }
 .settings-toggle input { width: 20px; height: 20px; accent-color: var(--primary-color); }
 .muted-note { color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; }
 .help-item { display: flex; flex-direction: column; gap: 6px; padding: 16px; background: rgba(255,255,255,0.05); border-radius: 8px; }
 .help-item span { color: var(--text-muted); line-height: 1.6; }
+.page-hero-card {
+    padding: 28px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
+    background: linear-gradient(135deg, rgba(229,9,20,0.16), rgba(255,255,255,0.06));
+}
+.page-hero-card span { color: var(--primary-color); font-weight: 800; font-size: 0.82rem; text-transform: uppercase; }
+.page-hero-card h3 { font-size: 1.55rem; line-height: 1.15; margin: 10px 0; }
+.page-hero-card p { color: #d8d8d8; line-height: 1.65; }
+.info-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.page-link-button { align-self: flex-start; text-decoration: none; }
 .input-group { text-align: left; margin-top: 18px; }
 .input-group label { display: block; color: var(--text-muted); margin-bottom: 8px; }
 .input-group input { width: 100%; padding: 13px; background: #242424; border: 1px solid #3a3a3a; color: #fff; border-radius: 5px; }
@@ -392,6 +404,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .footer-links a:hover { color: #fff; }
 .footer-copyright { color: #666; font-size: 0.86rem; }
 
+.mobile-bottom-nav { display: none; }
+body.reduce-backdrop-motion .modal-backdrop-bg { filter: blur(2px); transform: none; opacity: 0.34; }
+
 /* Helper classes */
 .w-100 { width: 100%; }
 .btn-danger-outline { background: transparent; border: 1px solid #ff4444; color: #ff4444; padding: 12px; border-radius: 4px; cursor: pointer; }
@@ -441,4 +456,29 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     .watch-meta { align-items: flex-start; }
     .watch-poster { width: 54px; }
     .watch-frame-wrap { height: min(58vh, calc(100vh - 220px)); border-radius: 8px; }
+    .mobile-bottom-nav {
+        position: fixed; left: 6px; right: 6px; bottom: 10px; z-index: 3500;
+        display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px;
+        padding: 7px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(10,10,10,0.86); backdrop-filter: blur(18px);
+        box-shadow: 0 18px 50px rgba(0,0,0,0.52);
+        overflow: hidden;
+    }
+    .mobile-bottom-nav button {
+        border: 0; background: transparent; color: #a8a8a8; border-radius: 12px;
+        min-height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 3px; cursor: pointer; font-size: 0.62rem; font-weight: 700; min-width: 0; width: 100%; padding: 4px 0;
+    }
+    .mobile-bottom-nav button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mobile-bottom-nav button svg { width: 19px; height: 19px; }
+    .mobile-bottom-nav button.active, .mobile-bottom-nav button:hover {
+        color: #fff; background: rgba(229,9,20,0.2);
+    }
+    body.compact-mobile-mode .hero { min-height: 520px; height: 66vh; padding-bottom: 58px; }
+    body.compact-mobile-mode .hero-title { font-size: 1.76rem; }
+    body.compact-mobile-mode .movie-row { padding-top: 18px; }
+    body.compact-mobile-mode .movie-card { min-width: 126px; }
+    .info-grid { grid-template-columns: 1fr; }
+    .page-hero-card { padding: 22px; }
+    .page-hero-card h3 { font-size: 1.28rem; }
 }

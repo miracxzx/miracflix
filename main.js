@@ -22,8 +22,56 @@ let isManageMode = false;
 let currentBrowseType = 'movie';
 let currentPage = 1;
 let appRevealed = false;
+const DEFAULT_PREFERENCES = {
+    trailerPreview: true,
+    notifications: true,
+    compactMobile: false,
+    reduceBackdropMotion: false
+};
 
 const getEl = (id) => document.getElementById(id);
+
+function getLocalPreferences() {
+    try {
+        return { ...DEFAULT_PREFERENCES, ...JSON.parse(localStorage.getItem('miracflixPreferences') || '{}') };
+    } catch {
+        return { ...DEFAULT_PREFERENCES };
+    }
+}
+
+function setLocalPreferences(preferences) {
+    localStorage.setItem('miracflixPreferences', JSON.stringify(preferences));
+}
+
+function applyPreferences(preferences = getLocalPreferences()) {
+    document.body.classList.toggle('compact-mobile-mode', !!preferences.compactMobile);
+    document.body.classList.toggle('reduce-backdrop-motion', !!preferences.reduceBackdropMotion);
+    document.body.classList.toggle('notifications-off', !preferences.notifications);
+    if (!preferences.notifications) {
+        const badge = getEl('notif-badge');
+        const drop = getEl('notif-dropdown');
+        if (badge) badge.style.display = 'none';
+        if (drop) drop.style.display = 'none';
+    }
+}
+
+async function getPreferences() {
+    const local = getLocalPreferences();
+    const data = await DataManager.getUserData();
+    const preferences = { ...local, ...(data?.preferences || {}) };
+    setLocalPreferences(preferences);
+    applyPreferences(preferences);
+    return preferences;
+}
+
+async function savePreferences(update) {
+    const current = getLocalPreferences();
+    const preferences = { ...current, ...update };
+    setLocalPreferences(preferences);
+    applyPreferences(preferences);
+    const user = await AuthManager.getUser();
+    if (user) await DataManager.updateUserData({ preferences });
+}
 
 function revealApp() {
     if (appRevealed) return;
@@ -454,6 +502,14 @@ window.removeFromContinue = async (movieId) => {
     renderContinueWatching();
 };
 
+function bindSettingsControls() {
+    document.querySelectorAll('[data-setting]').forEach(input => {
+        input.addEventListener('change', () => {
+            savePreferences({ [input.dataset.setting]: input.checked });
+        });
+    });
+}
+
 async function renderProfileInfoView(view) {
     getEl('collection-overlay').style.display = 'block';
     getEl('collection-grid').style.display = 'none';
@@ -466,6 +522,7 @@ async function renderProfileInfoView(view) {
 
     const user = await AuthManager.getUser();
     const data = await DataManager.getUserData();
+    const preferences = await getPreferences();
     const profiles = data?.profiles || [{ name: 'Kullanıcı' }];
     const activeIndex = parseInt(localStorage.getItem('activeProfileIndex') || '0');
     const activeProfile = profiles[activeIndex] || profiles[0];
@@ -486,10 +543,23 @@ async function renderProfileInfoView(view) {
             title: 'Ayarlar',
             icon: 'settings',
             body: `
-                <label class="settings-toggle"><span>Otomatik fragman önizleme</span><input type="checkbox" checked></label>
-                <label class="settings-toggle"><span>Bildirim rozetleri</span><input type="checkbox" checked></label>
-                <label class="settings-toggle"><span>Koyu sinema modu</span><input type="checkbox" checked disabled></label>
-                <p class="muted-note">Bu seçenekler şimdilik arayüz tercihleri için hazırlandı.</p>
+                <label class="settings-toggle">
+                    <span><strong>Otomatik fragman önizleme</strong><small>Fragman destekli alanlarda önizleme davranışını açık tutar.</small></span>
+                    <input type="checkbox" data-setting="trailerPreview" ${preferences.trailerPreview ? 'checked' : ''}>
+                </label>
+                <label class="settings-toggle">
+                    <span><strong>Bildirim rozetleri</strong><small>Yakında gelen içerik bildirimlerini üst menüde gösterir.</small></span>
+                    <input type="checkbox" data-setting="notifications" ${preferences.notifications ? 'checked' : ''}>
+                </label>
+                <label class="settings-toggle">
+                    <span><strong>Kompakt mobil görünüm</strong><small>Telefon ekranında hero ve satırları daha sıkı gösterir.</small></span>
+                    <input type="checkbox" data-setting="compactMobile" ${preferences.compactMobile ? 'checked' : ''}>
+                </label>
+                <label class="settings-toggle">
+                    <span><strong>Sakin arka plan</strong><small>Film sayfasındaki büyük görsel efektleri azaltır.</small></span>
+                    <input type="checkbox" data-setting="reduceBackdropMotion" ${preferences.reduceBackdropMotion ? 'checked' : ''}>
+                </label>
+                <p class="muted-note">Ayarlar cihazda hemen uygulanır; giriş yaptıysan profil verinle de eşitlenir.</p>
             `
         },
         help: {
@@ -510,6 +580,7 @@ async function renderProfileInfoView(view) {
         <div class="info-card-body">${selected.body}</div>
     `;
     if (window.lucide) lucide.createIcons();
+    if (view === 'settings') bindSettingsControls();
 }
 
 function renderFooterPage(page) {
@@ -518,58 +589,56 @@ function renderFooterPage(page) {
             title: 'Seslendirme ve Alt Yazı',
             icon: 'captions',
             body: `
-                <div class="help-item"><strong>Türkçe altyazı</strong><span>Oynatıcı uygun kaynak döndürdüğünde Türkçe altyazı varsayılan olarak istenir.</span></div>
-                <div class="help-item"><strong>Seslendirme</strong><span>İçerik sağlayıcısında varsa dublaj seçenekleri oynatıcı içinde görünür.</span></div>
-                <div class="help-item"><strong>Kalite</strong><span>Video kalitesi bağlantı ve kaynak durumuna göre otomatik değişebilir.</span></div>
+                <div class="page-hero-card"><span>TR odaklı izleme</span><h3>Altyazı ve dublaj seçenekleri tek yerde.</h3><p>Oynatıcı desteklediğinde Türkçe altyazı varsayılan olarak istenir, kalite seçimi kaynak durumuna göre korunur.</p></div>
+                <div class="info-grid"><div class="help-item"><strong>Türkçe altyazı</strong><span>Uygun kaynaklarda otomatik seçilir.</span></div><div class="help-item"><strong>Dublaj</strong><span>Kaynak sağlıyorsa oynatıcı içinden değiştirilebilir.</span></div><div class="help-item"><strong>Kalite</strong><span>Bağlantına göre otomatik ölçeklenir.</span></div></div>
             `
         },
         media: {
             title: 'Medya Merkezi',
             icon: 'newspaper',
             body: `
-                <div class="help-item"><strong>MIRACFLIX yayın akışı</strong><span>Popüler filmler, trend diziler ve yüksek puanlı içerikler TMDB verileriyle güncellenir.</span></div>
-                <div class="help-item"><strong>Poster ve görseller</strong><span>İçerik görselleri ilgili veri sağlayıcısından alınır ve arayüzde optimize edilmiş kartlarda gösterilir.</span></div>
+                <div class="page-hero-card"><span>Yayın akışı</span><h3>Popüler, trend ve yüksek puanlı içerikler canlı katalogdan beslenir.</h3><p>Film posterleri, oyuncular, benzer içerikler ve fragmanlar TMDB verileriyle arayüze taşınır.</p></div>
+                <button class="btn-xl secondary" onclick="renderCollection('popular', 'Yeni ve Popüler')"><i data-lucide="sparkles"></i> Yeni ve Popüler'i Aç</button>
             `
         },
         privacy: {
             title: 'Gizlilik',
             icon: 'shield',
             body: `
-                <div class="help-item"><strong>Hesap verileri</strong><span>Profil, favori ve izleme geçmişi gibi kullanıcıya ait alanlar Supabase kullanıcı verisi olarak tutulur.</span></div>
-                <div class="help-item"><strong>Yerel tercihler</strong><span>Aktif profil seçimi tarayıcı yerel depolamasında saklanır.</span></div>
+                <div class="page-hero-card"><span>Veri kontrolü</span><h3>Profil, favori, geçmiş ve ayar verileri sade bir kullanıcı modelinde tutulur.</h3><p>Aktif profil gibi cihaz tercihleri tarayıcıda, giriş yaptıysan liste ve yorum verileri Supabase tarafında saklanır.</p></div>
+                <div class="info-grid"><div class="help-item"><strong>Yerel tercih</strong><span>Aktif profil ve cihaz ayarları.</span></div><div class="help-item"><strong>Hesap verisi</strong><span>Favoriler, geçmiş, yorumlar ve puanlar.</span></div></div>
             `
         },
         terms: {
             title: 'Kullanım Koşulları',
             icon: 'file-text',
             body: `
-                <div class="help-item"><strong>Kişisel kullanım</strong><span>Bu arayüz kişisel izleme deneyimi, listeleme ve keşif amacıyla tasarlanmıştır.</span></div>
-                <div class="help-item"><strong>Üçüncü taraf kaynaklar</strong><span>Fragmanlar, posterler ve oynatıcı kaynakları harici servislerden gelebilir.</span></div>
+                <div class="page-hero-card"><span>Kullanım</span><h3>MIRACFLIX kişisel keşif, listeleme ve izleme deneyimi için tasarlandı.</h3><p>Posterler, fragmanlar ve bazı oynatma kaynakları üçüncü taraf servislerden gelebilir.</p></div>
+                <div class="info-grid"><div class="help-item"><strong>Katalog</strong><span>Harici veri sağlayıcılardan beslenir.</span></div><div class="help-item"><strong>Kişisel kullanım</strong><span>Profil ve listeleme deneyimi kullanıcı odaklıdır.</span></div></div>
             `
         },
         help: {
             title: 'Yardım Merkezi',
             icon: 'help-circle',
             body: `
-                <div class="help-item"><strong>Favori silme</strong><span>Favorilerim ekranında kartın sağ üstündeki çarpıyı kullan.</span></div>
-                <div class="help-item"><strong>Geçmiş temizleme</strong><span>İzleme Geçmişi veya İzlemeye Devam Et panelindeki çarpı ilgili içeriği kaldırır.</span></div>
-                <div class="help-item"><strong>Arama</strong><span>Arama ikonuna basıp film, dizi veya oyuncu adı yaz ve Enter'a bas.</span></div>
+                <div class="page-hero-card"><span>Destek</span><h3>Sık kullanılan işlemler artık tek dokunuş uzağında.</h3><p>Mobil alt menüden arama, filmler, listem ve profil ekranlarına hızlı geçebilirsin.</p></div>
+                <div class="info-grid"><div class="help-item"><strong>Favori silme</strong><span>Kartın sağ üstündeki çarpıyı kullan.</span></div><div class="help-item"><strong>Geçmiş temizleme</strong><span>İzlemeye Devam Et veya Geçmiş ekranından kaldır.</span></div><div class="help-item"><strong>Arama</strong><span>Arama ekranında yaz ve Enter'a bas.</span></div></div>
             `
         },
         company: {
             title: 'Kurumsal Bilgiler',
             icon: 'building-2',
             body: `
-                <div class="help-item"><strong>MIRACFLIX</strong><span>Film ve dizi keşfi, profil yönetimi, favoriler, yorumlar ve puanlama özellikleri sunan kişisel yayın arayüzü.</span></div>
-                <div class="help-item"><strong>Veri</strong><span>Film ve dizi katalog bilgileri TMDB API üzerinden alınır.</span></div>
+                <div class="page-hero-card"><span>MIRACFLIX</span><h3>Profil, keşif, favori, geçmiş, yorum ve puanlama odaklı kişisel yayın arayüzü.</h3><p>Ürün deneyimi Netflix hissini koruyup kişisel listeleme ve sosyal puanlama özellikleriyle genişletildi.</p></div>
+                <div class="info-grid"><div class="help-item"><strong>Teknik</strong><span>Vite, Supabase ve TMDB API.</span></div><div class="help-item"><strong>Yayın</strong><span>Netlify CDN üzerinden canlı.</span></div></div>
             `
         },
         contact: {
             title: 'Bize Ulaşın',
             icon: 'mail',
             body: `
-                <div class="help-item"><strong>Destek</strong><span>Profil, liste veya oynatıcı problemleri için Yardım Merkezi ekranını kontrol edebilirsin.</span></div>
-                <div class="help-item"><strong>Geri bildirim</strong><span>Yeni özellikler ve hata kayıtları proje içinde geliştirici tarafından takip edilebilir.</span></div>
+                <div class="page-hero-card"><span>İletişim</span><h3>Geri bildirim ve hata takibi için GitHub deposu kullanılabilir.</h3><p>Yeni özellik önerileri, UI sorunları ve yayın güncellemeleri repo üzerinden takip edilebilir.</p></div>
+                <a class="btn-xl secondary page-link-button" href="https://github.com/miracxzx/miracflix" target="_blank" rel="noreferrer"><i data-lucide="github"></i> GitHub Reposunu Aç</a>
             `
         }
     };
@@ -736,6 +805,7 @@ async function updateActionButtons() {
 
 // --- App Initialization ---
 async function init() {
+    applyPreferences();
     // Keep the intro visual, but never let slow APIs trap the whole UI behind it.
     setTimeout(revealApp, 1800);
 
@@ -754,6 +824,7 @@ async function init() {
     
     // 2. Auth State UI
     updateProfileUI();
+    getPreferences();
     
     const isLoggedIn = await AuthManager.isLoggedIn();
     if (isLoggedIn) {
@@ -761,7 +832,7 @@ async function init() {
         
         // Notifications (Upcoming)
         apiFetch('/movie/upcoming').then(d => {
-            if (d.results?.length) {
+            if (getLocalPreferences().notifications && d.results?.length) {
                 getEl('notif-badge').style.display = 'block';
                 getEl('notif-list').innerHTML = d.results.slice(0, 5).map(m => `
                     <div class="notif-item" onclick="openModalById(${m.id}, 'movie')">
@@ -944,6 +1015,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     getEl('post-comment-btn')?.addEventListener('click', postComment);
+
+    document.querySelectorAll('[data-mobile-action]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            document.querySelectorAll('[data-mobile-action]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const action = btn.dataset.mobileAction;
+            if (action === 'home') window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (action === 'search') getEl('search-overlay').style.display = 'flex';
+            if (action === 'movies') renderCollection('movie', 'Tüm Filmler');
+            if (action === 'favorites') renderCollection('favorites', 'Favorilerim');
+            if (action === 'profile') {
+                const user = await AuthManager.getUser();
+                getEl(user ? 'profile-settings-modal' : 'auth-modal').style.display = 'flex';
+            }
+        });
+    });
 
     document.querySelectorAll('[data-footer-page]').forEach(link => {
         link.addEventListener('click', e => {
