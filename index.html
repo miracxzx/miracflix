@@ -64,9 +64,68 @@
 
         <!-- Search Overlay -->
         <div id="search-overlay" class="search-overlay">
-            <div class="search-overlay-content">
-                <input type="text" id="search-input" placeholder="Film, dizi, oyuncu...">
-                <button id="close-search"><i data-lucide="x"></i></button>
+            <div class="search-panel">
+                <div class="search-overlay-content">
+                    <input type="text" id="search-input" placeholder="Film, dizi, oyuncu, yönetmen ara...">
+                    <button id="close-search"><i data-lucide="x"></i></button>
+                </div>
+                <div class="advanced-search-controls">
+                    <select id="search-type">
+                        <option value="multi">Hepsi</option>
+                        <option value="movie">Film</option>
+                        <option value="tv">Dizi</option>
+                        <option value="person">Oyuncu/Yönetmen</option>
+                    </select>
+                    <input id="search-year" type="number" placeholder="Yıl">
+                    <select id="search-genre">
+                        <option value="">Tüm türler</option>
+                        <option value="28">Aksiyon</option>
+                        <option value="12">Macera</option>
+                        <option value="16">Animasyon</option>
+                        <option value="35">Komedi</option>
+                        <option value="80">Suç</option>
+                        <option value="99">Belgesel</option>
+                        <option value="18">Dram</option>
+                        <option value="10751">Aile</option>
+                        <option value="14">Fantastik</option>
+                        <option value="36">Tarih</option>
+                        <option value="27">Korku</option>
+                        <option value="10402">Müzik</option>
+                        <option value="9648">Gizem</option>
+                        <option value="10749">Romantik</option>
+                        <option value="878">Bilim Kurgu</option>
+                        <option value="10770">TV Filmi</option>
+                        <option value="53">Gerilim</option>
+                        <option value="10752">Savaş</option>
+                        <option value="37">Western</option>
+                        <option value="10759">Aksiyon & Macera</option>
+                        <option value="10762">Çocuk</option>
+                        <option value="10763">Haber</option>
+                        <option value="10764">Reality</option>
+                        <option value="10765">Bilim Kurgu & Fantastik</option>
+                        <option value="10766">Pembe Dizi</option>
+                        <option value="10767">Talk Show</option>
+                        <option value="10768">Savaş & Politik</option>
+                    </select>
+                    <select id="search-topic">
+                        <option value="">Tüm konular</option>
+                        <option value="detective">Dedektif / soruşturma</option>
+                        <option value="mafia">Mafya / suç örgütü</option>
+                        <option value="revenge">İntikam</option>
+                        <option value="survival">Hayatta kalma</option>
+                        <option value="space">Uzay</option>
+                        <option value="time travel">Zaman yolculuğu</option>
+                        <option value="post apocalyptic">Kıyamet sonrası</option>
+                        <option value="zombie">Zombi</option>
+                        <option value="superhero">Süper kahraman</option>
+                        <option value="school">Okul / gençlik</option>
+                        <option value="family">Aile ilişkileri</option>
+                        <option value="heist">Soygun</option>
+                        <option value="spy">Ajan / casus</option>
+                        <option value="courtroom">Mahkeme</option>
+                        <option value="based on true story">Gerçek hikaye</option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -95,8 +154,8 @@
                 </div>
             </section>
 
-            <section id="my-list-section" class="movie-row" style="display: none;">
-                <h2>Listem</h2>
+            <section id="my-list-section" class="movie-row personal-row" style="display: none;">
+                <h2>Sonra İzle</h2>
                 <div class="slider-container">
                     <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
                     <div id="my-list" class="movie-list"></div>
@@ -104,7 +163,7 @@
                 </div>
             </section>
 
-            <section class="movie-row">
+            <section id="popular-row" class="movie-row standard-row">
                 <h2>Popüler Filmler</h2>
                 <div class="slider-container">
                     <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
@@ -113,7 +172,7 @@
                 </div>
             </section>
 
-            <section class="movie-row">
+            <section id="trending-tv-row" class="movie-row standard-row">
                 <h2>Trend Diziler</h2>
                 <div class="slider-container">
                     <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
@@ -122,13 +181,45 @@
                 </div>
             </section>
 
-            <section class="movie-row">
+            <section id="top-rated-row" class="movie-row standard-row">
                 <h2>En Çok Oy Alanlar</h2>
                 <div class="slider-container">
                     <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
                     <div id="top-rated" class="movie-list"></div>
                     <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
                 </div>
+            </section>
+
+            <section id="mystery-row" class="movie-row discovery-row">
+                <h2>Gizemli Diziler</h2>
+                <div class="slider-container">
+                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <div id="mystery-tv" class="movie-list"></div>
+                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                </div>
+            </section>
+
+            <section id="nineties-row" class="movie-row discovery-row">
+                <h2>90'lar Filmleri</h2>
+                <div class="slider-container">
+                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <div id="nineties-movies" class="movie-list"></div>
+                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                </div>
+            </section>
+
+            <section id="imdb-row" class="movie-row discovery-row">
+                <h2>IMDb 8+ Seçkisi</h2>
+                <div class="slider-container">
+                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <div id="imdb-eight-plus" class="movie-list"></div>
+                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                </div>
+            </section>
+
+            <section id="calendar-row" class="movie-row discovery-row">
+                <h2>Yeni Çıkanlar Takvimi</h2>
+                <div id="release-calendar" class="release-calendar"></div>
             </section>
         </main>
 
@@ -169,18 +260,45 @@
                         <div class="modal-btn-group">
                             <button id="modal-play-btn" class="btn-xl primary"><i data-lucide="play"></i> Oynat</button>
                             <button id="modal-trailer-btn" class="btn-xl secondary"><i data-lucide="film"></i> Fragman</button>
-                            <button id="add-to-watchlist" class="btn-xl secondary" style="padding: 18px;"><i data-lucide="plus"></i></button>
+                            <button id="add-to-watchlist" class="btn-xl secondary compact-action" title="Favorilere ekle"><i data-lucide="heart"></i></button>
+                            <button id="add-to-watchlater" class="btn-xl secondary compact-action" title="Sonra izle"><i data-lucide="clock"></i></button>
+                            <button id="mark-completed-btn" class="btn-xl secondary compact-action" title="İzlendi olarak işaretle"><i data-lucide="check-circle-2"></i></button>
+                            <button id="hide-content-btn" class="btn-xl secondary compact-action" title="Bunu gösterme"><i data-lucide="eye-off"></i></button>
+                            <button id="share-content-btn" class="btn-xl secondary compact-action" title="Bu filmi öner"><i data-lucide="send"></i></button>
                         </div>
 
-                        <div id="modal-cast" style="font-size: 1.1rem; color: #888; margin-top: 20px;">
-                            <strong>Oyuncular:</strong> <span id="modal-cast-list"></span>
+                        <div class="modal-credit-stack">
+                            <div id="modal-director" class="modal-credit-line">
+                                <strong>Yönetmen:</strong> <span id="modal-director-list"></span>
+                            </div>
+                            <div id="modal-cast" class="modal-credit-line">
+                                <strong>Oyuncular:</strong> <span id="modal-cast-list"></span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="modal-info-area">
+                    <section id="watch-state-panel" class="watch-state-panel"></section>
+
+                    <section id="tv-season-section" class="season-section" style="display: none;">
+                        <div class="section-heading-row">
+                            <div>
+                                <span class="section-kicker">Dizi rehberi</span>
+                                <h3>Sezonlar ve bölümler</h3>
+                            </div>
+                            <select id="season-select" class="season-select" aria-label="Sezon seç"></select>
+                        </div>
+                        <div id="episode-list" class="episode-list"></div>
+                    </section>
+
                     <div class="similar-content-wrapper">
-                        <h3 style="font-size: 2rem; margin-bottom: 30px;">Benzer İçerikler</h3>
+                        <div class="section-heading-row">
+                            <div>
+                                <span class="section-kicker">Keşfet</span>
+                                <h3>Benzer ve önerilen içerikler</h3>
+                            </div>
+                        </div>
                         <div id="similar-content-list" class="similar-grid"></div>
                     </div>
 
@@ -189,7 +307,8 @@
                         <h3 style="font-size: 2rem; margin-bottom: 30px;"><i data-lucide="message-square"></i> Yorumlar</h3>
                         <div class="comment-input-area" style="background: rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; margin-bottom: 40px;">
                             <textarea id="comment-textarea" placeholder="Bu içerik hakkında ne düşünüyorsun?" style="width: 100%; background: transparent; border: none; color: white; font-size: 1.1rem; resize: none; outline: none; min-height: 100px;"></textarea>
-                            <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
+                            <div style="display: flex; justify-content: space-between; gap: 15px; align-items: center; margin-top: 15px; flex-wrap: wrap;">
+                                <label class="spoiler-toggle"><input type="checkbox" id="comment-spoiler"> Spoiler içerir</label>
                                 <button id="post-comment-btn" class="btn btn-primary" style="padding: 10px 40px;">Gönder</button>
                             </div>
                         </div>
@@ -323,8 +442,11 @@
                     <ul class="profile-menu">
                         <li id="menu-profiles-manage"><i data-lucide="users"></i> Profil Yönetimi</li>
                         <li id="menu-favorites"><i data-lucide="heart"></i> Favorilerim</li>
+                        <li id="menu-watchlater"><i data-lucide="clock"></i> Sonra İzle</li>
                         <li id="menu-history"><i data-lucide="history"></i> İzleme Geçmişi</li>
                         <li id="menu-account"><i data-lucide="user"></i> Hesap</li>
+                        <li id="menu-social"><i data-lucide="users-round"></i> Sosyal</li>
+                        <li id="menu-custom-lists"><i data-lucide="list-plus"></i> Listelerim</li>
                         <li id="menu-settings"><i data-lucide="settings"></i> Ayarlar</li>
                         <li id="menu-help"><i data-lucide="help-circle"></i> Yardım Merkezi</li>
                         <li id="profile-logout" class="logout"><i data-lucide="log-out"></i> Çıkış Yap</li>
@@ -340,6 +462,7 @@
                 <div class="profile-avatar-wrapper" style="margin: 30px auto; width: 150px; height: 150px;">
                     <img src="" id="edit-profile-preview" style="width: 100%; height: 100%; border-radius: 8px; object-fit: cover;">
                 </div>
+                <div id="avatar-gallery" class="avatar-gallery"></div>
                 <div class="input-group">
                     <label>Profil Adı</label>
                     <input type="text" id="edit-profile-name-input" placeholder="İsim">
@@ -378,7 +501,7 @@
             <button type="button" data-mobile-action="home" class="active"><i data-lucide="home"></i><span>Ana</span></button>
             <button type="button" data-mobile-action="search"><i data-lucide="search"></i><span>Arama</span></button>
             <button type="button" data-mobile-action="movies"><i data-lucide="clapperboard"></i><span>Filmler</span></button>
-            <button type="button" data-mobile-action="favorites"><i data-lucide="heart"></i><span>Listem</span></button>
+            <button type="button" data-mobile-action="watchLater"><i data-lucide="clock"></i><span>Sonra</span></button>
             <button type="button" data-mobile-action="profile"><i data-lucide="user"></i><span>Profil</span></button>
         </nav>
     </div>
