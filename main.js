@@ -2076,10 +2076,12 @@ async function updateProfileUI() {
     const profileContainer = document.querySelector('.user-profile');
     
     if (!user) {
+        profileContainer.innerHTML = `<button class="nav-login-btn" onclick="openAuthModal(event)">Giriş Yap</button>`;
+        profileContainer.classList.add('logged-out');
+        
+        // Still set these in case the modal is opened manually or through other means
         const guestData = getGuestUserData();
         const guestProfile = guestData.profiles?.[getActiveProfileIndex()] || guestData.profiles?.[0] || { name: 'Misafir' };
-        profileContainer.innerHTML = `<img src="${guestProfile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${guestProfile.name}`}">`;
-        profileContainer.classList.remove('logged-out');
         getEl('profile-img-large').src = guestProfile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${guestProfile.name}`;
         getEl('profile-name-display').innerText = guestProfile.name;
         getEl('profile-email-display').innerText = 'Misafir profil';
@@ -2306,7 +2308,12 @@ document.addEventListener('DOMContentLoaded', () => {
     getEl('close-search')?.addEventListener('click', () => getEl('search-overlay').style.display = 'none');
     
     // Profile
-    getEl('user-profile-btn')?.addEventListener('click', async () => {
+    getEl('user-profile-btn')?.addEventListener('click', async (e) => {
+        const user = await AuthManager.getUser();
+        if (!user) {
+            openAuthModal(e);
+            return;
+        }
         getEl('collection-overlay').style.display = 'none';
         getEl('movie-modal').style.display = 'none';
         getEl('profile-settings-modal').style.display = 'flex';
