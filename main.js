@@ -5,7 +5,7 @@ const { createClient } = window.supabase;
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Configuration
-const API_KEY = '20a0abcbeaf2431b5807118f4fe80c5e'; 
+const API_KEY = import.meta.env?.VITE_TMDB_API_KEY || '20a0abcbeaf2431b5807118f4fe80c5e'; 
 const BASE_URL = 'https://api.themoviedb.org/3';
 const IMG_URL = 'https://image.tmdb.org/t/p/w500';
 const BACKDROP_URL = 'https://image.tmdb.org/t/p/original';
@@ -628,13 +628,21 @@ function openPlayerPage(movie, imdbId, sourceUrl, mode = 'watch') {
     document.body.style.overflow = 'hidden';
     getEl('player-container').innerHTML = `
         <div class="watch-shell" style="${backdrop ? `--watch-bg: url('${backdrop}')` : ''}">
-            <div class="watch-meta">
-                <img src="${poster}" alt="${title}" class="watch-poster">
-                <div>
-                    <span class="watch-kicker">${mode === 'trailer' ? 'Fragman' : 'Şimdi Oynatılıyor'}</span>
-                    <h1>${title}</h1>
-                    <p>${year ? `${year} · ` : ''}${mode === 'trailer' ? 'YouTube fragmanı' : 'MIRACFLIX oynatıcı'}</p>
+            <div class="watch-meta" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                <div style="display: flex; align-items: center; gap: 18px;">
+                    <img src="${poster}" alt="${title}" class="watch-poster">
+                    <div>
+                        <span class="watch-kicker">${mode === 'trailer' ? 'Fragman' : 'Şimdi Oynatılıyor'}</span>
+                        <h1>${title}</h1>
+                        <p>${year ? `${year} · ` : ''}${mode === 'trailer' ? 'YouTube fragmanı' : 'MIRACFLIX oynatıcı'}</p>
+                    </div>
                 </div>
+                ${mode !== 'trailer' ? `
+                    <div class="party-btn-group" style="display: flex; gap: 10px; flex-shrink: 0;">
+                        <button type="button" class="btn btn-secondary" style="padding: 8px 16px; font-size: 0.85rem;" onclick="startWatchParty()"><i data-lucide="users" style="width: 14px; height: 14px;"></i> Party Başlat</button>
+                        <button type="button" class="btn btn-secondary" style="padding: 8px 16px; font-size: 0.85rem;" onclick="joinWatchParty()"><i data-lucide="user-plus" style="width: 14px; height: 14px;"></i> Katıl</button>
+                    </div>
+                ` : ''}
             </div>
             <div class="watch-frame-wrap">
                 <button type="button" class="player-fullscreen-btn" onclick="togglePlayerFullscreen()" title="Tam ekran">
@@ -1107,9 +1115,12 @@ async function openModal(movie, type = 'movie') {
     getEl('modal-poster-img').src = movie.poster_path ? IMG_URL + movie.poster_path : POSTER_FALLBACK;
     getEl('modal-title').innerText = movie.title || movie.name;
     getEl('modal-year').innerText = (movie.release_date || movie.first_air_date || '').split('-')[0];
-    getEl('modal-rating').innerText = movie.vote_average ? movie.vote_average.toFixed(1) : '0.0';
     getEl('modal-overview').innerText = movie.overview;
     getEl('modal-type-badge').innerText = type === 'movie' ? 'Film' : 'Dizi';
+    
+    // Circular Progress & AI Insights
+    updateCircularRatings(movie.vote_average, movie.popularity, 0.0);
+    renderAiInsights(movie);
     
     // Cast
     const castData = await apiFetch(`/${type}/${movie.id}/credits`);
@@ -1216,7 +1227,9 @@ async function fetchMiracScore(movieId) {
         ? (data.reduce((acc, curr) => acc + curr.rating, 0) / data.length).toFixed(1) 
         : '0.0';
         
-    getEl('mirac-score-val').innerText = avgScore;
+    const miracValEl = getEl('ring-mirac-val');
+    if (miracValEl) miracValEl.innerText = avgScore;
+    updateCircularRatings(currentMovie?.vote_average, currentMovie?.popularity, avgScore);
     
     const user = await AuthManager.getUser();
     if (user) {
@@ -1756,23 +1769,41 @@ async function renderProfileInfoView(view) {
         social: {
             title: 'Sosyal',
             icon: 'users-round',
-            body: `
-                <div class="settings-field">
-                    <label>Arkadaşlık isteği gönder</label>
-                    <div class="inline-control"><input id="friend-name-input" type="text" placeholder="Profil adı veya e-posta"><button class="btn-xl secondary" onclick="addFriendFromInput()">Gönder</button></div>
-                </div>
-                <div class="friend-request-list">
-                    <h3>Gelen istekler</h3>
-                    ${incomingRequestCards || '<p class="muted-note">Bekleyen arkadaşlık isteği yok.</p>'}
-                </div>
-                <div class="info-grid">
-                    <div class="help-item"><strong>Arkadaşlar</strong><span>${friendNames.join(', ') || getProfileBucket(data, 'friends', []).join(', ') || 'Henüz arkadaş eklenmedi.'}</span></div>
-                    <div class="help-item"><strong>Gönderilen istekler</strong><span>${sentRequestText || 'Bekleyen gönderilmiş istek yok.'}</span></div>
-                    <div class="help-item"><strong>Arkadaşların ne izliyor?</strong><span>${getProfileBucket(data, 'activityFeed', []).slice(0, 4).map(item => item.text).join(' · ') || 'Aktivite akışı boş.'}</span></div>
-                </div>
-                <div class="page-hero-card"><span>Ortak liste</span><h3>Sonra İzle listeni arkadaşlarınla planlamak için hazır alan.</h3><p>Arkadaşlık sistemi artık istek, kabul ve bildirim akışıyla çalışır. Ortak listeler bir sonraki sosyal katman için hazır bekliyor.</p></div>
-            `
+            body: (() => {
+                const friendListHtml = friendships.length > 0 
+                    ? friendships.map(friend => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.04); padding: 12px 18px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <img src="${friend.friend_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${friend.friend_name}`}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
+                                <strong>${escapeHtml(friend.friend_name)}</strong>
+                            </div>
+                            <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px;" onclick="openDirectChat('${friend.friend_id}', '${escapeInline(friend.friend_name)}', '${escapeInline(friend.friend_avatar || '')}')"><i data-lucide="message-square" style="width: 14px; height: 14px;"></i> Mesaj</button>
+                        </div>
+                    `).join('')
+                    : '<p class="muted-note">Henüz arkadaş eklenmemiş.</p>';
+
+                return `
+                    <div class="settings-field">
+                        <label>Arkadaşlık isteği gönder</label>
+                        <div class="inline-control"><input id="friend-name-input" type="text" placeholder="Profil adı veya e-posta"><button class="btn-xl secondary" onclick="addFriendFromInput()">Gönder</button></div>
+                    </div>
+                    <div class="friend-request-list">
+                        <h3>Gelen istekler</h3>
+                        ${incomingRequestCards || '<p class="muted-note">Bekleyen arkadaşlık isteği yok.</p>'}
+                    </div>
+                    <div style="margin-top: 30px;">
+                        <h3 style="margin-bottom: 15px;"><i data-lucide="users"></i> Arkadaşlarım</h3>
+                        ${friendListHtml}
+                    </div>
+                    <div id="direct-chat-area" style="margin-top: 30px; display: none;"></div>
+                    <div class="info-grid" style="margin-top: 30px;">
+                        <div class="help-item"><strong>Gönderilen istekler</strong><span>${sentRequestText || 'Bekleyen gönderilmiş istek yok.'}</span></div>
+                        <div class="help-item"><strong>Arkadaşların ne izliyor?</strong><span>${getProfileBucket(data, 'activityFeed', []).slice(0, 4).map(item => item.text).join(' · ') || 'Aktivite akışı boş.'}</span></div>
+                    </div>
+                `;
+            })()
         },
+
         lists: {
             title: 'Listelerim',
             icon: 'list-plus',
@@ -2244,6 +2275,7 @@ async function init() {
     renderContinueWatching();
     renderWatchLater();
     renderNotifications();
+    if (isLoggedIn) subscribeToRealtimeNotifications();
 
     // 3. Remove Loading Intro once the first content pass has had a chance to land.
     setTimeout(revealApp, 1500);
@@ -2340,10 +2372,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Surprise (Shuffle)
-    getEl('surprise-btn')?.addEventListener('click', async () => {
-        const data = await apiFetch('/movie/popular', `&page=${Math.floor(Math.random() * 10) + 1}`);
-        if (data.results?.length) openModal(data.results[Math.floor(Math.random() * 20)]);
+    // Surprise (Shuffle) - Decision Wheel Trigger
+    getEl('surprise-btn')?.addEventListener('click', () => {
+        setupDecisionWheel();
     });
 
     // Profile Settings
@@ -2489,16 +2520,574 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Close Modals
-    document.querySelectorAll('.close-modal, .close-auth, .close-profile-settings, .close-player').forEach(btn => {
+    document.querySelectorAll('.close-modal, .close-auth, .close-profile-settings, .close-player, #close-wheel').forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.modal, .player-sub-overlay').forEach(m => m.style.display = 'none');
+            document.querySelectorAll('.modal, .player-sub-overlay, #wheel-modal').forEach(m => m.style.display = 'none');
             document.body.style.overflow = 'auto';
             if (btn.classList.contains('close-player')) getEl('player-container').innerHTML = '';
         });
     });
+
+    // Decision Wheel Buttons
+    getEl('spin-wheel-btn')?.addEventListener('click', spinWheel);
+    getEl('wheel-respin-btn')?.addEventListener('click', setupDecisionWheel);
 
     // Global Click to close dropdowns
     window.addEventListener('click', () => {
         getEl('notif-dropdown').style.display = 'none';
     });
 });
+
+// --- Decision Wheel Logic ---
+let wheelMovies = [];
+let isWheelSpinning = false;
+let currentRotation = 0;
+
+async function setupDecisionWheel() {
+    getEl('wheel-modal').style.display = 'flex';
+    getEl('spin-wheel-btn').style.display = 'inline-flex';
+    getEl('wheel-winner-card').style.display = 'none';
+    
+    // Reset wheel transformation instantly
+    const canvas = getEl('wheel-canvas');
+    if (canvas) {
+        canvas.style.transition = 'none';
+        canvas.style.transform = 'rotate(0deg)';
+        canvas.offsetHeight; // Trigger reflow
+        canvas.style.transition = 'transform 6s cubic-bezier(0.1, 0.8, 0.1, 1)';
+    }
+    
+    const isAiMode = getEl('wheel-ai-mode')?.checked;
+    let data = null;
+    
+    if (isAiMode) {
+        const userData = await DataManager.getUserData();
+        const history = userData?.history || [];
+        const watchlist = userData?.watchlist || [];
+        const allItems = [...history, ...watchlist];
+        
+        if (allItems.length > 0) {
+            // Count genres from user's active selections
+            const genreCounts = {};
+            allItems.forEach(item => {
+                const genres = item.genre_ids || [];
+                genres.forEach(id => {
+                    genreCounts[id] = (genreCounts[id] || 0) + 1;
+                });
+            });
+            
+            // Get favorite genre ID
+            const favGenreId = Object.keys(genreCounts).sort((a, b) => genreCounts[b] - genreCounts[a])[0];
+            
+            if (favGenreId) {
+                showRealtimeToast('🧠 AI Öneri Modu', 'İzleme geçmişin analiz edilerek en sevdiğin türe göre özel çark hazırlandı.');
+                data = await apiFetch('/discover/movie', `&with_genres=${favGenreId}&sort_by=vote_average.desc&vote_count.gte=100&page=${Math.floor(Math.random() * 3) + 1}`);
+            }
+        }
+        
+        if (!data || !data.results || data.results.length < 8) {
+            showRealtimeToast('🧠 AI Öneri Modu', 'İzleme geçmişin henüz yetersiz olduğu için sana özel popüler içerikler seçildi.');
+            data = await apiFetch('/movie/popular', `&page=${Math.floor(Math.random() * 5) + 1}`);
+        }
+    } else {
+        data = await apiFetch('/movie/popular', `&page=${Math.floor(Math.random() * 5) + 1}`);
+    }
+    
+    if (!data.results || data.results.length < 8) return;
+    
+    // Shuffle and pick 8
+    wheelMovies = data.results.sort(() => 0.5 - Math.random()).slice(0, 8);
+    drawWheel();
+}
+
+function drawWheel() {
+    const canvas = getEl('wheel-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const size = canvas.width;
+    const center = size / 2;
+    const radius = center - 10;
+    
+    ctx.clearRect(0, 0, size, size);
+    
+    // Custom theme colors based on body theme
+    const theme = document.body.dataset.theme || 'classic';
+    let baseColor = '#E50914';
+    let hoverColor = '#ff2e3b';
+    if (theme === 'blue') {
+        baseColor = '#2f80ff';
+        hoverColor = '#5a9cff';
+    } else if (theme === 'purple') {
+        baseColor = '#a855f7';
+        hoverColor = '#c084fc';
+    } else if (theme === 'amoled') {
+        baseColor = '#ffffff';
+        hoverColor = '#d6d6d6';
+    }
+    
+    const themeColors = [
+        baseColor, '#181818', '#333333', '#080808',
+        hoverColor, '#222222', '#555555', '#121212'
+    ];
+    
+    const arc = Math.PI * 2 / 8;
+    
+    wheelMovies.forEach((movie, i) => {
+        const angle = i * arc;
+        ctx.fillStyle = themeColors[i % themeColors.length];
+        
+        ctx.beginPath();
+        ctx.arc(center, center, radius, angle, angle + arc);
+        ctx.lineTo(center, center);
+        ctx.fill();
+        
+        // Draw Text
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
+        ctx.translate(center, center);
+        ctx.rotate(angle + arc / 2);
+        ctx.textAlign = 'right';
+        ctx.font = 'bold 11px Poppins, sans-serif';
+        
+        // Truncate title
+        let title = movie.title || movie.name || '';
+        if (title.length > 15) title = title.substring(0, 13) + '..';
+        
+        ctx.fillText(title, radius - 20, 4);
+        ctx.restore();
+    });
+    
+    // Draw Center Circle
+    ctx.beginPath();
+    ctx.arc(center, center, 20, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(center, center, 15, 0, Math.PI * 2);
+    ctx.fillStyle = baseColor;
+    ctx.fill();
+}
+
+function spinWheel() {
+    if (isWheelSpinning || !wheelMovies.length) return;
+    isWheelSpinning = true;
+    
+    getEl('spin-wheel-btn').style.display = 'none';
+    getEl('wheel-winner-card').style.display = 'none';
+    
+    const canvas = getEl('wheel-canvas');
+    const winnerIndex = Math.floor(Math.random() * 8);
+    const winner = wheelMovies[winnerIndex];
+    
+    // 360 deg is 8 slices (45 deg each)
+    // Pointer is at the top (270 deg). 
+    // To land slice winnerIndex at 12 o'clock, we align its center:
+    const spins = 6 + Math.floor(Math.random() * 4); // 6 to 9 full spins
+    const sliceAngle = 360 / 8;
+    
+    // Rotation offset to align pointer with slice center
+    const targetDeg = 270 - (winnerIndex * sliceAngle + sliceAngle / 2);
+    const totalRotation = (spins * 360) + targetDeg;
+    
+    canvas.style.transform = `rotate(${totalRotation}deg)`;
+    currentRotation = totalRotation;
+    
+    setTimeout(() => {
+        isWheelSpinning = false;
+        
+        // Show winner details
+        const card = getEl('wheel-winner-card');
+        getEl('wheel-winner-img').src = winner.poster_path ? IMG_URL + winner.poster_path : POSTER_FALLBACK;
+        getEl('wheel-winner-title').innerText = winner.title || winner.name;
+        getEl('wheel-winner-desc').innerText = winner.overview || 'Açıklama bulunmuyor.';
+        
+        card.style.display = 'flex';
+        
+        getEl('wheel-winner-btn').onclick = () => {
+            getEl('wheel-modal').style.display = 'none';
+            openModal(winner);
+        };
+    }, 6100);
+}
+
+// --- DM Chat System ---
+let activeChatFriendId = null;
+let chatSubscription = null;
+
+async function openDirectChat(friendId, friendName, friendAvatar) {
+    activeChatFriendId = friendId;
+    const area = getEl('direct-chat-area');
+    if (!area) return;
+    
+    area.style.display = 'block';
+    area.innerHTML = `
+        <div class="chat-tab-container">
+            <div class="chat-header">
+                <img src="${friendAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${friendName}`}" alt="${friendName}">
+                <strong>${escapeHtml(friendName)} ile Sohbet</strong>
+            </div>
+            <div class="chat-messages" id="chat-msg-list">
+                <p class="muted-note" style="text-align: center; padding: 20px;">Mesajlar yükleniyor...</p>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="chat-message-input" placeholder="Bir mesaj yaz...">
+                <button type="button" class="chat-send-btn" id="chat-send-btn"><i data-lucide="send"></i></button>
+            </div>
+        </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+    
+    // Bind send button
+    getEl('chat-send-btn').addEventListener('click', sendDirectMessage);
+    getEl('chat-message-input').addEventListener('keyup', e => {
+        if (e.key === 'Enter') sendDirectMessage();
+    });
+    
+    fetchDirectMessages(friendId);
+    subscribeToDirectMessages(friendId);
+}
+
+async function fetchDirectMessages(friendId) {
+    const user = await AuthManager.getUser();
+    if (!user) return;
+    
+    const list = getEl('chat-msg-list');
+    if (!list) return;
+    
+    try {
+        const { data: messages, error } = await supabase
+            .from('direct_messages')
+            .select('*')
+            .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${user.id})`)
+            .order('created_at', { ascending: true });
+            
+        if (error) throw error;
+        renderChatMessages(messages || []);
+    } catch (e) {
+        // Fallback local storage
+        const localKey = `dm_${user.id}_${friendId}`;
+        const localMsgs = JSON.parse(localStorage.getItem(localKey) || '[]');
+        renderChatMessages(localMsgs);
+    }
+}
+
+function renderChatMessages(messages) {
+    const list = getEl('chat-msg-list');
+    if (!list) return;
+    
+    if (messages.length === 0) {
+        list.innerHTML = '<p class="muted-note" style="text-align: center; padding: 20px;">Sohbeti başlatmak için ilk mesajı gönder!</p>';
+        return;
+    }
+    
+    const activeUserId = userDataCache?.id || '';
+    
+    list.innerHTML = messages.map(msg => {
+        const isSent = msg.sender_id === activeUserId || msg.is_sent;
+        const time = new Date(msg.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        return `
+            <div class="chat-msg ${isSent ? 'sent' : 'received'}">
+                ${escapeHtml(msg.message)}
+                <span class="chat-time">${time}</span>
+            </div>
+        `;
+    }).join('');
+    
+    list.scrollTop = list.scrollHeight;
+}
+
+async function sendDirectMessage() {
+    const input = getEl('chat-message-input');
+    const message = input.value.trim();
+    if (!message || !activeChatFriendId) return;
+    
+    input.value = '';
+    const user = await AuthManager.getUser();
+    if (!user) return;
+    
+    const newMsg = {
+        sender_id: user.id,
+        receiver_id: activeChatFriendId,
+        message: message,
+        created_at: new Date().toISOString()
+    };
+    
+    try {
+        const { error } = await supabase.from('direct_messages').insert(newMsg);
+        if (error) throw error;
+        fetchDirectMessages(activeChatFriendId);
+    } catch (e) {
+        // Fallback local storage
+        const localKey = `dm_${user.id}_${activeChatFriendId}`;
+        const oppositeKey = `dm_${activeChatFriendId}_${user.id}`;
+        const localMsgs = JSON.parse(localStorage.getItem(localKey) || '[]');
+        const toSave = { ...newMsg, is_sent: true };
+        localMsgs.push(toSave);
+        localStorage.setItem(localKey, JSON.stringify(localMsgs));
+        localStorage.setItem(oppositeKey, JSON.stringify(localMsgs));
+        renderChatMessages(localMsgs);
+    }
+}
+
+function subscribeToDirectMessages(friendId) {
+    if (chatSubscription) {
+        supabase.removeChannel(chatSubscription);
+    }
+    
+    chatSubscription = supabase
+        .channel('public:direct_messages')
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'direct_messages'
+        }, payload => {
+            const msg = payload.new;
+            if (msg.sender_id === friendId || msg.receiver_id === friendId) {
+                fetchDirectMessages(friendId);
+            }
+        })
+        .subscribe();
+}
+
+window.openDirectChat = openDirectChat;
+
+// --- Real-Time Toast Notifications ---
+let notificationSubscription = null;
+
+async function subscribeToRealtimeNotifications() {
+    const user = await AuthManager.getUser();
+    if (!user) return;
+    
+    if (notificationSubscription) {
+        supabase.removeChannel(notificationSubscription);
+    }
+    
+    notificationSubscription = supabase
+        .channel('public:notifications')
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${user.id}`
+        }, payload => {
+            const notif = payload.new;
+            showRealtimeToast(notif.title, notif.body || '');
+            renderNotifications();
+        })
+        .subscribe();
+}
+
+function showRealtimeToast(title, body) {
+    const toastContainer = getEl('realtime-toast-container') || createToastContainer();
+    const toast = document.createElement('div');
+    toast.className = 'realtime-toast';
+    toast.innerHTML = `
+        <div class="rt-toast-header">
+            <i data-lucide="bell" style="width:16px; height:16px; color: var(--primary-color);"></i>
+            <strong>${escapeHtml(title)}</strong>
+        </div>
+        <p>${escapeHtml(body)}</p>
+    `;
+    toastContainer.appendChild(toast);
+    if (window.lucide) lucide.createIcons();
+    
+    setTimeout(() => toast.classList.add('show'), 10);
+    
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400);
+    }, 5000);
+}
+
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.id = 'realtime-toast-container';
+    container.className = 'realtime-toast-container';
+    document.body.appendChild(container);
+    return container;
+}
+
+window.subscribeToRealtimeNotifications = subscribeToRealtimeNotifications;
+
+// --- Watch Party System ---
+let currentPartyChannel = null;
+let isPartyHost = false;
+let partyRoomCode = '';
+
+async function startWatchParty() {
+    const user = await AuthManager.getUser();
+    if (!user) return showToast('Watch Party başlatmak için giriş yapmalısın.');
+    
+    const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    partyRoomCode = roomCode;
+    isPartyHost = true;
+    
+    setupWatchPartyChannel(roomCode);
+    showToast(`Watch Party kuruldu! Kod: ${roomCode}`);
+    renderWatchPartyUI();
+}
+
+async function joinWatchParty(code) {
+    const user = await AuthManager.getUser();
+    if (!user) return showToast('Watch Party katılmak için giriş yapmalısın.');
+    if (!code) {
+        const inputCode = prompt('Girmek istediğiniz 6 haneli oda kodunu yazın:');
+        if (!inputCode) return;
+        code = inputCode;
+    }
+    
+    const roomCode = code.trim().toUpperCase();
+    partyRoomCode = roomCode;
+    isPartyHost = false;
+    
+    setupWatchPartyChannel(roomCode);
+    showToast(`Watch Party odaya katıldın: ${roomCode}`);
+    renderWatchPartyUI();
+}
+
+function setupWatchPartyChannel(roomCode) {
+    if (currentPartyChannel) {
+        supabase.removeChannel(currentPartyChannel);
+    }
+    
+    currentPartyChannel = supabase.channel(`party:${roomCode}`, {
+        config: {
+            broadcast: { self: false }
+        }
+    });
+    
+    currentPartyChannel
+        .on('broadcast', { event: 'sync' }, payload => {
+            if (!isPartyHost) {
+                const action = payload.payload.action;
+                showRealtimeToast('📡 Watch Party', `Yayın durumu host tarafından senkronize edildi: ${action}`);
+            }
+        })
+        .subscribe();
+}
+
+function renderWatchPartyUI() {
+    const shell = document.querySelector('.watch-shell');
+    if (!shell) return;
+    
+    let partyBar = document.querySelector('.watch-party-bar');
+    if (!partyBar) {
+        partyBar = document.createElement('div');
+        partyBar.className = 'watch-party-bar';
+        shell.insertBefore(partyBar, shell.firstChild);
+    }
+    
+    partyBar.innerHTML = `
+        <div class="party-info-group">
+            <span class="party-badge">Canlı Party</span>
+            <strong>Oda Kodu: <span style="color: var(--primary-color); letter-spacing: 1px;">${partyRoomCode}</span></strong>
+        </div>
+        <div class="party-actions">
+            ${isPartyHost ? `
+                <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="syncPartyHostPlayback('Oynatılıyor')"><i data-lucide="play" style="width: 12px; height: 12px;"></i> Oynatmayı Eşitle</button>
+            ` : '<span style="font-size: 0.8rem; color: var(--text-muted);">Senkronizasyon aktif...</span>'}
+            <button type="button" class="btn-danger-outline" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px;" onclick="leaveWatchParty()">Ayrıl</button>
+        </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+}
+
+function syncPartyHostPlayback(action) {
+    if (!isPartyHost || !currentPartyChannel) return;
+    currentPartyChannel.send({
+        type: 'broadcast',
+        event: 'sync',
+        payload: { action, time: 0 }
+    });
+    showToast('Tüm oda üyeleriyle oynatma durumu eşitlendi.');
+}
+
+function leaveWatchParty() {
+    if (currentPartyChannel) {
+        supabase.removeChannel(currentPartyChannel);
+        currentPartyChannel = null;
+    }
+    partyRoomCode = '';
+    document.querySelector('.watch-party-bar')?.remove();
+    showToast('Watch Party odasından ayrıldın.');
+}
+
+window.startWatchParty = startWatchParty;
+window.joinWatchParty = joinWatchParty;
+window.syncPartyHostPlayback = syncPartyHostPlayback;
+window.leaveWatchParty = leaveWatchParty;
+
+// --- Circular Progress Ratings & AI Insights & Hover Trailer Previews ---
+function updateCircularRatings(imdbScore, popularity, miracScore) {
+    const imdbValEl = getEl('ring-imdb-val');
+    const imdbBarEl = getEl('ring-imdb-bar');
+    const popValEl = getEl('ring-pop-val');
+    const popBarEl = getEl('ring-pop-bar');
+    const miracValEl = getEl('ring-mirac-val');
+    const miracBarEl = getEl('ring-mirac-bar');
+    
+    if (imdbValEl && imdbBarEl) {
+        const val = imdbScore ? parseFloat(imdbScore) : 0.0;
+        imdbValEl.innerText = val.toFixed(1);
+        const percent = val / 10;
+        imdbBarEl.style.strokeDashoffset = 163.36 * (1 - percent);
+    }
+    
+    if (popValEl && popBarEl) {
+        const val = popularity ? parseFloat(popularity) : 0;
+        const percent = Math.min(100, Math.max(5, Math.round(val / 20))); // Normalize popularity
+        popValEl.innerText = percent + '%';
+        popBarEl.style.strokeDashoffset = 163.36 * (1 - percent / 100);
+    }
+    
+    if (miracValEl && miracBarEl) {
+        const val = miracScore ? parseFloat(miracScore) : 0.0;
+        miracValEl.innerText = val.toFixed(1);
+        const percent = val / 10;
+        miracBarEl.style.strokeDashoffset = 163.36 * (1 - percent);
+    }
+}
+
+async function renderAiInsights(movie) {
+    const textEl = getEl('modal-ai-insights-text');
+    const panelEl = getEl('modal-ai-insights');
+    if (!textEl || !panelEl) return;
+    
+    const userData = await DataManager.getUserData();
+    const history = userData?.history || [];
+    const watchlist = userData?.watchlist || [];
+    const allItems = [...history, ...watchlist];
+    
+    if (allItems.length === 0) {
+        panelEl.style.display = 'none';
+        return;
+    }
+    
+    const genreNames = {
+        28: 'Aksiyon', 12: 'Macera', 16: 'Animasyon', 35: 'Komedi', 80: 'Suç',
+        99: 'Belgesel', 18: 'Dram', 10751: 'Aile', 14: 'Fantastik', 36: 'Tarih',
+        27: 'Korku', 10402: 'Müzik', 9648: 'Gizem', 10749: 'Romantik',
+        878: 'Bilim Kurgu', 53: 'Gerilim', 10752: 'Savaş', 37: 'Western'
+    };
+    
+    const userGenres = {};
+    allItems.forEach(item => {
+        const genres = item.genre_ids || [];
+        genres.forEach(id => {
+            userGenres[id] = (userGenres[id] || 0) + 1;
+        });
+    });
+    
+    const movieGenres = movie.genres?.map(g => g.id) || movie.genre_ids || [];
+    const matches = movieGenres.filter(id => userGenres[id] > 0);
+    panelEl.style.display = 'block';
+    
+    if (matches.length > 0) {
+        const topGenreId = matches.sort((a, b) => userGenres[b] - userGenres[a])[0];
+        const genreName = genreNames[topGenreId] || 'bu tarz';
+        textEl.innerText = `${genreName} türündeki içerikleri sıklıkla izlediğini fark ettik. Bu yapım, zengin görsel atmosferi ve güçlü hikaye örgüsüyle kişisel sinema zevkine tam olarak uyuyor!`;
+    } else {
+        textEl.innerText = `Bu içerik, şimdiye kadar izlediğin türlerden farklı ve taze bir soluk sunuyor. Sinema yelpazeni genişletmek ve yeni bir macera keşfetmek için harika bir fırsat!`;
+    }
+}
+

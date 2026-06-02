@@ -152,7 +152,7 @@ body.notifications-off .notification-center { display: none; }
     border-radius: 6px; overflow: hidden; position: relative; box-shadow: 0 10px 26px rgba(0,0,0,0.2);
 }
 .movie-card:hover { transform: translateY(-6px) scale(1.03); z-index: 10; box-shadow: 0 18px 45px rgba(0,0,0,0.48); }
-.movie-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: #222; }
+.movie-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: #222; border-radius: 6px; }
 .remove-card-btn {
     position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border: 0; border-radius: 50%;
     background: rgba(0,0,0,0.72); color: #fff; display: grid; place-items: center;
@@ -809,3 +809,332 @@ body.reduce-backdrop-motion .modal-backdrop-bg { filter: blur(2px); transform: n
     .page-hero-card { padding: 22px; }
     .page-hero-card h3 { font-size: 1.28rem; }
 }
+
+/* ==========================================================================
+   MIRACFLIX PREMIUM DESIGN SYSTEM EXTENSIONS (GLASSMORPHISM & GLOW EFFECTS)
+   ========================================================================== */
+
+/* Glassmorphism Styles */
+.notif-dropdown,
+.search-overlay-content,
+.browse-sidebar,
+.modal-content,
+.comments-section,
+.season-section,
+.watch-state-panel,
+.form-card,
+.list-picker-popover {
+    background: rgba(18, 18, 18, 0.72) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Smooth active state transitions */
+.btn, .btn-xl, .movie-card {
+    will-change: transform, box-shadow, filter;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+                box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+                background-color 0.3s ease, 
+                border-color 0.3s ease !important;
+}
+
+/* Shimmer Loading Effect */
+.skeleton-card {
+    background: linear-gradient(
+        90deg, 
+        rgba(22, 22, 22, 1) 0%, 
+        rgba(36, 36, 36, 1) 25%, 
+        rgba(48, 48, 48, 1) 50%, 
+        rgba(36, 36, 36, 1) 75%, 
+        rgba(22, 22, 22, 1) 100%
+    ) !important;
+    background-size: 200% 100% !important;
+    animation: shimmerGlow 1.6s infinite linear !important;
+}
+
+@keyframes shimmerGlow {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Button Premium Glows */
+.btn-primary:hover, .btn-xl.primary:hover {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.25), 0 0 40px rgba(255, 255, 255, 0.1);
+    transform: translateY(-3px) scale(1.02);
+}
+
+.btn-secondary:hover, .btn-xl.secondary:hover {
+    background: rgba(255, 255, 255, 0.2) !important;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+    transform: translateY(-3px) scale(1.02);
+}
+
+.btn-login:hover {
+    background: var(--primary-hover) !important;
+    box-shadow: 0 0 20px rgba(229, 9, 20, 0.5), 0 0 40px rgba(229, 9, 20, 0.2);
+    transform: translateY(-2px);
+}
+
+/* Movie Card Glow and Scale */
+.movie-card:hover {
+    transform: translateY(-10px) scale(1.05) !important;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 25px rgba(229, 9, 20, 0.2) !important;
+}
+
+body[data-theme="blue"] .movie-card:hover {
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 25px rgba(47, 128, 255, 0.25) !important;
+}
+
+body[data-theme="purple"] .movie-card:hover {
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 25px rgba(168, 85, 247, 0.25) !important;
+}
+
+body[data-theme="amoled"] .movie-card:hover {
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.9), 0 0 25px rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Custom Premium Scrollbars */
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15) !important;
+    border-radius: 99px !important;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-color) !important;
+}
+
+/* Real-Time Toast Notifications */
+.realtime-toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 12000;
+    display: grid;
+    gap: 12px;
+    pointer-events: none;
+}
+
+.realtime-toast {
+    background: rgba(20, 20, 20, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-left: 4px solid var(--primary-color);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(229, 9, 20, 0.1);
+    color: #fff;
+    padding: 16px 20px;
+    border-radius: 8px;
+    width: 320px;
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    pointer-events: auto;
+}
+
+.realtime-toast.show {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.rt-toast-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.rt-toast-header strong {
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.realtime-toast p {
+    font-size: 0.84rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+/* Chat Layout Styles */
+.chat-tab-container {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    height: 480px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.chat-header {
+    background: rgba(255, 255, 255, 0.04);
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chat-header img {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.chat-messages {
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scroll-behavior: smooth;
+}
+
+.chat-msg {
+    max-width: 75%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 0.88rem;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.chat-msg.sent {
+    align-self: flex-end;
+    background: var(--primary-color);
+    color: #fff;
+    border-bottom-right-radius: 2px;
+    box-shadow: 0 4px 12px rgba(229, 9, 20, 0.2);
+}
+
+.chat-msg.received {
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border-bottom-left-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.chat-time {
+    display: block;
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.4);
+    margin-top: 4px;
+    text-align: right;
+}
+
+.chat-input-area {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chat-input-area input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: #fff;
+    font-size: 0.88rem;
+    outline: none;
+}
+
+.chat-input-area input:focus {
+    border-color: var(--primary-color);
+}
+
+.chat-send-btn {
+    background: var(--primary-color);
+    border: none;
+    color: #fff;
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: background 0.2s;
+}
+
+.chat-send-btn:hover {
+    background: var(--primary-hover);
+}
+
+/* Watch Party Controls */
+.watch-party-bar {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 14px 20px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 10;
+}
+
+.party-info-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.party-badge {
+    background: rgba(46, 204, 113, 0.15);
+    border: 1px solid rgba(46, 204, 113, 0.4);
+    color: #2ecc71;
+    font-weight: 800;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.party-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ==========================================================================
+   MIRACFLIX NEW PREMIUM ADDITIONS (CIRCULAR RATINGS, HOVER IFRAME, AI INSIGHTS)
+   ========================================================================== */
+
+/* Dairesel Neon SVG Rating Rings */
+.rating-circle-item {
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.rating-circle-item:hover {
+    transform: scale(1.1);
+}
+
+/* AI Insights glowing panel effects */
+.ai-insights-panel {
+    position: relative;
+    overflow: hidden;
+    animation: borderGlow 4s infinite alternate;
+}
+
+@keyframes borderGlow {
+    0% {
+        border-color: rgba(229, 9, 20, 0.25);
+        box-shadow: 0 0 10px rgba(229, 9, 20, 0.05);
+    }
+    100% {
+        border-color: rgba(229, 9, 20, 0.6);
+        box-shadow: 0 0 25px rgba(229, 9, 20, 0.15);
+    }
+}
+
+
