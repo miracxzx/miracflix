@@ -3089,7 +3089,8 @@ function setupWatchPartyChannel(roomCode) {
     
     currentPartyChannel = supabase.channel(`party:${roomCode}`, {
         config: {
-            presence: { key: roomCode }
+            presence: { key: roomCode },
+            broadcast: { self: false }
         }
     });
     
@@ -3115,6 +3116,11 @@ function setupWatchPartyChannel(roomCode) {
                 showRealtimeToast('👥 Watch Party', `${p.userName} odadan ayrıldı.`);
             });
         })
+        .on('broadcast', { event: 'request_sync' }, () => {
+            if (isPartyHost) {
+                broadcastCurrentMovie();
+            }
+        })
         .on('broadcast', { event: 'sync_movie' }, payload => {
             if (!isPartyHost) {
                 const { movie, imdbId, sourceUrl } = payload.payload;
@@ -3130,14 +3136,22 @@ function setupWatchPartyChannel(roomCode) {
         
     currentPartyChannel.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
+            const user = await AuthManager.getUser();
+            const userId = user ? user.id : 'guest-' + Math.random().toString(36).substring(2, 6);
             await currentPartyChannel.track({
-                userId: supabase.auth.user ? (supabase.auth.user()?.id || 'guest-' + Math.random().toString(36).substring(2, 6)) : 'guest-' + Math.random().toString(36).substring(2, 6),
+                userId: userId,
                 userName: profileName,
                 userAvatar: profileAvatar,
                 isHost: isPartyHost
             });
             if (isPartyHost) {
                 broadcastCurrentMovie();
+            } else {
+                currentPartyChannel.send({
+                    type: 'broadcast',
+                    event: 'request_sync',
+                    payload: {}
+                });
             }
         }
     });
