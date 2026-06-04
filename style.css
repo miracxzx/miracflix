@@ -1106,6 +1106,16 @@ body[data-theme="amoled"] .movie-card:hover {
     gap: 8px;
 }
 
+.party-member-avatar-wrap {
+    transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    cursor: pointer;
+}
+
+.party-member-avatar-wrap:hover {
+    transform: scale(1.2) translateY(-2px);
+    z-index: 5;
+}
+
 /* ==========================================================================
    MIRACFLIX NEW PREMIUM ADDITIONS (CIRCULAR RATINGS, HOVER IFRAME, AI INSIGHTS)
    ========================================================================== */

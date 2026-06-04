@@ -24,6 +24,10 @@ let currentBrowseType = 'movie';
 let currentPage = 1;
 let appRevealed = false;
 let userDataCache = null;
+let currentPlayingMovie = null;
+let currentPlayingImdbId = null;
+let currentPlayingSourceUrl = null;
+let sharedListsCache = {};
 const DEFAULT_PREFERENCES = {
     trailerPreview: true,
     notifications: true,
@@ -601,9 +605,7 @@ window.openCustomList = async (encodedName) => {
 
 window.openSharedList = async (encodedName) => {
     const name = decodeURIComponent(encodedName);
-    const data = await DataManager.getUserData();
-    const sharedLists = getProfileBucket(data, 'sharedLists', {});
-    const list = sharedLists[name];
+    const list = sharedListsCache[name];
     getEl('collection-title').innerText = name;
     getEl('collection-grid').style.display = 'grid';
     getEl('browse-view').style.display = 'none';
@@ -623,6 +625,12 @@ function openPlayerPage(movie, imdbId, sourceUrl, mode = 'watch') {
     const backdrop = movie?.backdrop_path ? BACKDROP_URL + movie.backdrop_path : '';
     const year = (movie?.release_date || movie?.first_air_date || '').split('-')[0];
     const source = sourceUrl || (imdbId ? `https://www.playimdb.com/title/${imdbId}/?sub_tr=1&default_sub=tr` : '');
+
+    if (mode === 'watch') {
+        currentPlayingMovie = movie;
+        currentPlayingImdbId = imdbId;
+        currentPlayingSourceUrl = sourceUrl;
+    }
 
     getEl('player-sub-overlay').style.display = 'block';
     document.body.style.overflow = 'hidden';
@@ -661,6 +669,11 @@ function openPlayerPage(movie, imdbId, sourceUrl, mode = 'watch') {
     if (window.lucide) lucide.createIcons();
 }
 
+function openPlayerPageForMember(movie, imdbId, sourceUrl) {
+    if (currentPlayingMovie && currentPlayingMovie.id === movie?.id) return;
+    openPlayerPage(movie, imdbId, sourceUrl, 'watch');
+}
+
 window.togglePlayerFullscreen = async () => {
     const target = getEl('player-container')?.querySelector('.watch-frame-wrap') || getEl('player-sub-overlay');
     if (!target) return;
@@ -688,18 +701,49 @@ const DataManager = {
             return userDataCache;
         }
         
-        const { data, error } = await supabase
-            .from('user_data')
-            .select('*')
-            .eq('id', user.id)
-            .single();
+        try {
+            const [userDataResult, sharedListsResult] = await Promise.all([
+                supabase.from('user_data').select('*').eq('id', user.id).single(),
+                supabase.from('shared_playlists').select('*')
+            ]);
             
-        if (error && error.code !== 'PGRST116') {
-            console.error('User Data Fetch Error:', error);
+            let data = userDataResult.data;
+            if (userDataResult.error && userDataResult.error.code !== 'PGRST116') {
+                console.error('User Data Fetch Error:', userDataResult.error);
+            }
+            
+            // Cache the shared lists
+            sharedListsCache = {};
+            if (sharedListsResult.data && !sharedListsResult.error) {
+                sharedListsResult.data.forEach(list => {
+                    sharedListsCache[list.name] = {
+                        id: list.id,
+                        name: list.name,
+                        collaborators: list.collaborators,
+                        items: list.items,
+                        creator_id: list.creator_id,
+                        creator_name: list.creator_name
+                    };
+                });
+            }
+            
+            userDataCache = data;
+            if (data) syncPublicProfile(data);
+            return data;
+        } catch (dbErr) {
+            console.warn('DB Fetch error in getUserData, using fallback:', dbErr);
+            const { data, error } = await supabase
+                .from('user_data')
+                .select('*')
+                .eq('id', user.id)
+                .single();
+            if (error && error.code !== 'PGRST116') {
+                console.error('User Data Fallback Fetch Error:', error);
+            }
+            userDataCache = data;
+            if (data) syncPublicProfile(data);
+            return data;
         }
-        userDataCache = data;
-        if (data) syncPublicProfile(data);
-        return data;
     },
     
     updateUserData: async (update) => {
@@ -922,54 +966,111 @@ const DataManager = {
     },
 
     createSharedList: async (listName, collaboratorNames = []) => {
+        const user = await AuthManager.getUser();
+        if (!user) return showToast('Ortak liste oluşturmak için giriş yapmalısın.');
         const data = await DataManager.getUserData();
         if (!data || !listName.trim()) return showToast('Ortak liste adı yazmalısın.');
-        const sharedLists = getProfileBucket(data, 'sharedLists', {});
         const name = listName.trim().slice(0, 40);
-        const existing = sharedLists[name] || {};
-        sharedLists[name] = {
-            name,
-            collaborators: collaboratorNames.filter(Boolean),
-            items: existing.items || [],
-            created_at: existing.created_at || new Date().toISOString()
+        
+        const activeProfile = getActiveProfile(data);
+        const creatorName = activeProfile?.name || 'Lider';
+        
+        const { data: newRow, error } = await supabase
+            .from('shared_playlists')
+            .insert({
+                name,
+                creator_id: user.id,
+                creator_name: creatorName,
+                collaborators: collaboratorNames.filter(Boolean),
+                items: []
+            })
+            .select()
+            .single();
+            
+        if (error) {
+            console.error('Shared list create error:', error);
+            showToast('Ortak liste oluşturulamadı. Veritabanı tablosu kurulu olmayabilir.');
+            return;
+        }
+        
+        sharedListsCache[name] = {
+            id: newRow.id,
+            name: newRow.name,
+            collaborators: newRow.collaborators,
+            items: newRow.items,
+            creator_id: newRow.creator_id,
+            creator_name: newRow.creator_name
         };
-        await DataManager.updateUserData({ sharedLists: setProfileBucket(data, 'sharedLists', sharedLists) });
+        
         showToast(`${name} ortak listesi hazır.`);
         renderProfileInfoView('lists');
     },
 
     addToSharedList: async (listName, movie = currentMovie) => {
-        const data = await DataManager.getUserData();
-        if (!data || !movie || !listName.trim()) return showToast('Ortak liste ve açık içerik gerekli.');
-        const sharedLists = getProfileBucket(data, 'sharedLists', {});
+        if (!movie || !listName.trim()) return showToast('Ortak liste ve açık içerik gerekli.');
         const name = listName.trim();
-        const current = sharedLists[name] || { name, collaborators: [], items: [] };
+        const list = sharedListsCache[name];
+        if (!list) return showToast('Ortak liste bulunamadı.');
+        
         const item = normalizeStoredMedia(movie, currentMovie?.type || currentBrowseType);
-        current.items = [item, ...(current.items || []).filter(m => !isSameMedia(m, item))].slice(0, 80);
-        sharedLists[name] = current;
-        await DataManager.updateUserData({ sharedLists: setProfileBucket(data, 'sharedLists', sharedLists) });
+        const updatedItems = [item, ...(list.items || []).filter(m => !isSameMedia(m, item))].slice(0, 80);
+        
+        const { error } = await supabase
+            .from('shared_playlists')
+            .update({ items: updatedItems, updated_at: new Date().toISOString() })
+            .eq('id', list.id);
+            
+        if (error) {
+            console.error('Shared list add error:', error);
+            showToast('Ortak listeye eklenemedi.');
+            return;
+        }
+        
+        list.items = updatedItems;
         showToast(`${name} ortak listesine eklendi.`);
         renderListPicker();
     },
 
     removeFromSharedList: async (movieId, mediaType = null, encodedName = '') => {
-        const data = await DataManager.getUserData();
         const name = decodeURIComponent(encodedName);
-        const sharedLists = getProfileBucket(data, 'sharedLists', {});
+        const list = sharedListsCache[name];
+        if (!list) return;
+        
         const targetKey = mediaType ? `${mediaType}:${movieId}` : null;
-        if (sharedLists[name]) {
-            sharedLists[name].items = (sharedLists[name].items || []).filter(m => targetKey ? getHistoryKey(m) !== targetKey : m.id !== movieId);
+        const updatedItems = (list.items || []).filter(m => targetKey ? getHistoryKey(m) !== targetKey : m.id !== movieId);
+        
+        const { error } = await supabase
+            .from('shared_playlists')
+            .update({ items: updatedItems, updated_at: new Date().toISOString() })
+            .eq('id', list.id);
+            
+        if (error) {
+            console.error('Shared list remove error:', error);
+            showToast('Ortak listeden silinemedi.');
+            return;
         }
-        await DataManager.updateUserData({ sharedLists: setProfileBucket(data, 'sharedLists', sharedLists) });
+        
+        list.items = updatedItems;
         openSharedList(encodeURIComponent(name));
     },
 
     deleteSharedList: async (encodedName) => {
-        const data = await DataManager.getUserData();
         const name = decodeURIComponent(encodedName);
-        const sharedLists = getProfileBucket(data, 'sharedLists', {});
-        delete sharedLists[name];
-        await DataManager.updateUserData({ sharedLists: setProfileBucket(data, 'sharedLists', sharedLists) });
+        const list = sharedListsCache[name];
+        if (!list) return;
+        
+        const { error } = await supabase
+            .from('shared_playlists')
+            .delete()
+            .eq('id', list.id);
+            
+        if (error) {
+            console.error('Shared list delete error:', error);
+            showToast('Ortak liste silinemedi.');
+            return;
+        }
+        
+        delete sharedListsCache[name];
         showToast(`${name} ortak listesi silindi.`);
         renderProfileInfoView('lists');
     },
@@ -1539,7 +1640,7 @@ async function renderListPicker() {
     if (!panel) return;
     const data = await DataManager.getUserData();
     const lists = getProfileBucket(data, 'customLists', {});
-    const sharedLists = getProfileBucket(data, 'sharedLists', {});
+    const sharedLists = sharedListsCache;
     const listButtons = Object.keys(lists).map(name => `
         <button type="button" onclick="DataManager.addToCustomList('${escapeInline(name)}')">
             <span>${escapeHtml(name)}</span><em>${lists[name].length}</em>
@@ -1809,7 +1910,7 @@ async function renderProfileInfoView(view) {
             icon: 'list-plus',
             body: (() => {
                 const lists = getProfileBucket(data, 'customLists', {});
-                const sharedLists = getProfileBucket(data, 'sharedLists', {});
+                const sharedLists = sharedListsCache;
                 const buttons = Object.keys(lists).map(name => `
                     <div class="list-manage-chip">
                         <button class="list-chip" onclick="openCustomList('${encodeURIComponent(name)}')">${name}<span>${lists[name].length}</span></button>
@@ -2945,6 +3046,42 @@ async function joinWatchParty(code) {
     renderWatchPartyUI();
 }
 
+function broadcastCurrentMovie() {
+    if (!isPartyHost || !currentPartyChannel || !currentPlayingMovie) return;
+    currentPartyChannel.send({
+        type: 'broadcast',
+        event: 'sync_movie',
+        payload: {
+            movie: currentPlayingMovie,
+            imdbId: currentPlayingImdbId,
+            sourceUrl: currentPlayingSourceUrl
+        }
+    });
+}
+
+function updatePartyMembersList(state) {
+    const avatarsContainer = document.querySelector('.party-members-avatars');
+    if (!avatarsContainer) return;
+    
+    const members = [];
+    const seen = new Set();
+    Object.values(state).forEach(presences => {
+        presences.forEach(p => {
+            if (p.userName && !seen.has(p.userId)) {
+                seen.add(p.userId);
+                members.push(p);
+            }
+        });
+    });
+    
+    avatarsContainer.innerHTML = members.map(m => `
+        <div class="party-member-avatar-wrap" style="position: relative; display: inline-flex;" title="${escapeHtml(m.userName)}${m.isHost ? ' (Lider)' : ''}">
+            <img src="${m.userAvatar}" style="width: 28px; height: 28px; border-radius: 50%; border: 2px solid ${m.isHost ? 'var(--primary-color)' : '#5a9cff'}; object-fit: cover; background: #222;">
+            ${m.isHost ? '<span style="position: absolute; bottom: -3px; right: -3px; font-size: 10px;">👑</span>' : ''}
+        </div>
+    `).join('');
+}
+
 function setupWatchPartyChannel(roomCode) {
     if (currentPartyChannel) {
         supabase.removeChannel(currentPartyChannel);
@@ -2952,18 +3089,58 @@ function setupWatchPartyChannel(roomCode) {
     
     currentPartyChannel = supabase.channel(`party:${roomCode}`, {
         config: {
-            broadcast: { self: false }
+            presence: { key: roomCode }
         }
     });
     
+    const profile = userDataCache ? getActiveProfile(userDataCache) : { name: 'Misafir' };
+    const profileName = profile.name || 'Misafir';
+    const profileAvatar = profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profileName}`;
+    
     currentPartyChannel
+        .on('presence', { event: 'sync' }, () => {
+            const state = currentPartyChannel.presenceState();
+            updatePartyMembersList(state);
+        })
+        .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+            newPresences.forEach(p => {
+                showRealtimeToast('👥 Watch Party', `${p.userName} odaya katıldı!`);
+            });
+            if (isPartyHost) {
+                broadcastCurrentMovie();
+            }
+        })
+        .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+            leftPresences.forEach(p => {
+                showRealtimeToast('👥 Watch Party', `${p.userName} odadan ayrıldı.`);
+            });
+        })
+        .on('broadcast', { event: 'sync_movie' }, payload => {
+            if (!isPartyHost) {
+                const { movie, imdbId, sourceUrl } = payload.payload;
+                openPlayerPageForMember(movie, imdbId, sourceUrl);
+            }
+        })
         .on('broadcast', { event: 'sync' }, payload => {
             if (!isPartyHost) {
                 const action = payload.payload.action;
                 showRealtimeToast('📡 Watch Party', `Yayın durumu host tarafından senkronize edildi: ${action}`);
             }
-        })
-        .subscribe();
+        });
+        
+    currentPartyChannel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+            await currentPartyChannel.track({
+                userId: supabase.auth.user ? (supabase.auth.user()?.id || 'guest-' + Math.random().toString(36).substring(2, 6)) : 'guest-' + Math.random().toString(36).substring(2, 6),
+                userName: profileName,
+                userAvatar: profileAvatar,
+                isHost: isPartyHost
+            });
+            if (isPartyHost) {
+                broadcastCurrentMovie();
+            }
+        }
+    });
 }
 
 function renderWatchPartyUI() {
@@ -2978,11 +3155,14 @@ function renderWatchPartyUI() {
     }
     
     partyBar.innerHTML = `
-        <div class="party-info-group">
+        <div class="party-info-group" style="display: flex; align-items: center; gap: 10px;">
             <span class="party-badge">Canlı Party</span>
             <strong>Oda Kodu: <span style="color: var(--primary-color); letter-spacing: 1px;">${partyRoomCode}</span></strong>
+            <div class="party-members-avatars" style="display: flex; align-items: center; gap: 6px; margin-left: 15px;">
+                <!-- Avatars loaded dynamically -->
+            </div>
         </div>
-        <div class="party-actions">
+        <div class="party-actions" style="display: flex; align-items: center; gap: 10px;">
             ${isPartyHost ? `
                 <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="syncPartyHostPlayback('Oynatılıyor')"><i data-lucide="play" style="width: 12px; height: 12px;"></i> Oynatmayı Eşitle</button>
             ` : '<span style="font-size: 0.8rem; color: var(--text-muted);">Senkronizasyon aktif...</span>'}
@@ -2999,6 +3179,7 @@ function syncPartyHostPlayback(action) {
         event: 'sync',
         payload: { action, time: 0 }
     });
+    broadcastCurrentMovie();
     showToast('Tüm oda üyeleriyle oynatma durumu eşitlendi.');
 }
 

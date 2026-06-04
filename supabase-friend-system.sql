@@ -231,3 +231,60 @@ $$;
 
 grant execute on function public.accept_friend_request(uuid) to authenticated;
 grant execute on function public.decline_friend_request(uuid) to authenticated;
+
+-- ==========================================================================
+-- SHARED PLAYLISTS (ORTAK PLAYLIST) TABLOSU VE GÜVENLİK POLİTİKALARI
+-- ==========================================================================
+
+create table if not exists public.shared_playlists (
+    id uuid primary key default gen_random_uuid(),
+    name text not null,
+    creator_id uuid not null references auth.users(id) on delete cascade,
+    creator_name text not null,
+    collaborators text[] not null default '{}',
+    items jsonb not null default '[]'::jsonb,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+-- RLS Aktifleştirme
+alter table public.shared_playlists enable row level security;
+
+-- Herkes ortak liste oluşturabilir
+drop policy if exists "Anyone authenticated can create a shared playlist" on public.shared_playlists;
+create policy "Anyone authenticated can create a shared playlist"
+    on public.shared_playlists for insert
+    to authenticated
+    with check (creator_id = auth.uid());
+
+-- Listeyi sadece oluşturan (lider) veya ortak çalışan arkadaş (collaborator) okuyabilir
+drop policy if exists "Collaborators or creator can select shared playlist" on public.shared_playlists;
+create policy "Collaborators or creator can select shared playlist"
+    on public.shared_playlists for select
+    to authenticated
+    using (
+        creator_id = auth.uid() 
+        or (
+            select display_name from public.user_public_profiles where id = auth.uid()
+        ) = any(collaborators)
+    );
+
+-- Listeyi oluşturan veya ortak çalışan güncelleyebilir (film ekleme/silme)
+drop policy if exists "Collaborators or creator can update shared playlist" on public.shared_playlists;
+create policy "Collaborators or creator can update shared playlist"
+    on public.shared_playlists for update
+    to authenticated
+    using (
+        creator_id = auth.uid() 
+        or (
+            select display_name from public.user_public_profiles where id = auth.uid()
+        ) = any(collaborators)
+    );
+
+-- Listeyi sadece oluşturan silebilir
+drop policy if exists "Only creator can delete shared playlist" on public.shared_playlists;
+create policy "Only creator can delete shared playlist"
+    on public.shared_playlists for delete
+    to authenticated
+    using (creator_id = auth.uid());
+
