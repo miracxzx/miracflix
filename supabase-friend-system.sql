@@ -288,3 +288,34 @@ create policy "Only creator can delete shared playlist"
     to authenticated
     using (creator_id = auth.uid());
 
+
+-- ==========================================================================
+-- MOVIE DUELS (VS DÜELLO) TABLOSU VE GÜVENLİK POLİTİKALARI
+-- ==========================================================================
+
+create table if not exists public.movie_duels (
+    id uuid primary key default gen_random_uuid(),
+    movie_a_id text not null,
+    movie_a_title text not null,
+    movie_a_poster text,
+    movie_b_id text not null,
+    movie_b_title text not null,
+    movie_b_poster text,
+    votes_a integer not null default 0,
+    votes_b integer not null default 0,
+    constraint unique_movie_pair unique (movie_a_id, movie_b_id)
+);
+
+-- RLS Aktifleştirme
+alter table public.movie_duels enable row level security;
+
+-- Herkes oy verebilir ve okuyabilir
+drop policy if exists "Anyone can select duels" on public.movie_duels;
+create policy "Anyone can select duels" on public.movie_duels for select to authenticated, anon using (true);
+
+drop policy if exists "Anyone can insert duels" on public.movie_duels;
+create policy "Anyone can insert duels" on public.movie_duels for insert to authenticated, anon with check (true);
+
+drop policy if exists "Anyone can update duels" on public.movie_duels;
+create policy "Anyone can update duels" on public.movie_duels for update to authenticated, anon using (true);
+

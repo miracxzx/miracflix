@@ -1,8 +1,67 @@
 import { SUPABASE_URL, SUPABASE_KEY } from './supabase-config.js';
 
-// Initialize Supabase Client
-const { createClient } = window.supabase;
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Initialize Supabase Client Safely
+let supabase = null;
+try {
+    if (window.supabase && typeof window.supabase.createClient === 'function') {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    } else {
+        console.warn('Supabase JS SDK could not be loaded from CDN. Falling back to local offline mode.');
+    }
+} catch (err) {
+    console.error('Failed to initialize Supabase client:', err);
+}
+
+// Fallback Mock Supabase Client for offline/blocked network environments
+if (!supabase) {
+    supabase = {
+        auth: {
+            getUser: async () => ({ data: { user: null }, error: null }),
+            signOut: async () => ({ error: null }),
+            onAuthStateChange: (callback) => {
+                setTimeout(() => callback('SIGNED_OUT', null), 0);
+                return { data: { subscription: { unsubscribe: () => {} } } };
+            }
+        },
+        from: () => {
+            const chain = {
+                select: () => chain,
+                insert: () => chain,
+                update: () => chain,
+                delete: () => chain,
+                upsert: () => chain,
+                eq: () => chain,
+                neq: () => chain,
+                in: () => chain,
+                or: () => chain,
+                order: () => chain,
+                limit: () => chain,
+                maybeSingle: async () => ({ data: null, error: null }),
+                single: async () => ({ data: null, error: null }),
+                then: (resolve) => resolve({ data: [], error: null })
+            };
+            return chain;
+        },
+        channel: () => ({
+            on: function() { return this; },
+            subscribe: (callback) => {
+                if (callback) callback('SUBSCRIBED');
+                return { unsubscribe: () => {} };
+            },
+            track: async () => {},
+            send: () => {}
+        }),
+        removeChannel: () => {},
+        rpc: async () => ({ data: null, error: new Error('Supabase not available') })
+    };
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            showToast('Veritabanı bağlantısı kurulamadı. Çevrimdışı/Misafir modunda çalışılıyor. Tercihleriniz yerel olarak saklanacaktır.');
+        }, 3000);
+    });
+}
+
 
 // Configuration
 const API_KEY = import.meta.env?.VITE_TMDB_API_KEY || '20a0abcbeaf2431b5807118f4fe80c5e'; 
@@ -619,17 +678,83 @@ window.openSharedList = async (encodedName) => {
     });
 };
 
+function getPlayerSources(movie, imdbId) {
+    const tmdbId = movie?.id;
+    const isTv = movie?.type === 'tv' || movie?.media_type === 'tv';
+    const season = currentEpisode?.season || 1;
+    const episode = currentEpisode?.episode || 1;
+
+    const sources = [
+        {
+            name: "PlayIMDb (Varsayılan)",
+            url: imdbId ? `https://www.playimdb.com/title/${imdbId}/?sub_tr=1&default_sub=tr` : ''
+        },
+        {
+            name: "VidSrc.to (Alternatif 1)",
+            url: isTv 
+                ? `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}` 
+                : `https://vidsrc.to/embed/movie/${imdbId || tmdbId}`
+        },
+        {
+            name: "VidSrc.me (Alternatif 2)",
+            url: isTv 
+                ? `https://vidsrc.xyz/embed/tv?imdb=${imdbId}&season=${season}&episode=${episode}` 
+                : `https://vidsrc.xyz/embed/movie?imdb=${imdbId}`
+        },
+        {
+            name: "Embed.su (Alternatif 3)",
+            url: isTv 
+                ? `https://embed.su/embed/tv/${tmdbId}/${season}/${episode}` 
+                : `https://embed.su/embed/movie/${tmdbId}`
+        },
+        {
+            name: "SuperEmbed (Alternatif 4)",
+            url: isTv 
+                ? `https://multiembed.mov/?video_id=${imdbId || tmdbId}&tmdb=1&s=${season}&e=${episode}` 
+                : `https://multiembed.mov/?video_id=${imdbId || tmdbId}&tmdb=1`
+        }
+    ];
+
+    return sources.filter(s => s.url);
+}
+
+window.switchPlayerSource = (url) => {
+    const iframe = getEl('player-container')?.querySelector('iframe');
+    if (iframe) {
+        iframe.src = url;
+        currentPlayingSourceUrl = url;
+    }
+};
+
 function openPlayerPage(movie, imdbId, sourceUrl, mode = 'watch') {
     const title = movie?.title || movie?.name || 'MIRACFLIX';
     const poster = movie?.poster_path ? IMG_URL + movie.poster_path : POSTER_FALLBACK;
     const backdrop = movie?.backdrop_path ? BACKDROP_URL + movie.backdrop_path : '';
     const year = (movie?.release_date || movie?.first_air_date || '').split('-')[0];
-    const source = sourceUrl || (imdbId ? `https://www.playimdb.com/title/${imdbId}/?sub_tr=1&default_sub=tr` : '');
+    
+    let source = sourceUrl;
+    let sourceSelectorHtml = '';
 
     if (mode === 'watch') {
         currentPlayingMovie = movie;
         currentPlayingImdbId = imdbId;
-        currentPlayingSourceUrl = sourceUrl;
+        
+        const sources = getPlayerSources(movie, imdbId);
+        if (!source && sources.length > 0) {
+            source = sources[0].url;
+        }
+        currentPlayingSourceUrl = source;
+
+        sourceSelectorHtml = `
+            <div class="player-source-selector-wrap" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+                <label for="player-source-select" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700; white-space: nowrap;">Kaynak Değiştir:</label>
+                <select id="player-source-select" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; outline: none; cursor: pointer; min-width: 150px; font-family: inherit;" onchange="switchPlayerSource(this.value)">
+                    ${sources.map(s => `<option value="${escapeHtml(s.url)}" ${s.url === source ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
+                </select>
+            </div>
+        `;
+    } else {
+        source = sourceUrl || (imdbId ? `https://www.playimdb.com/title/${imdbId}/?sub_tr=1&default_sub=tr` : '');
     }
 
     getEl('player-sub-overlay').style.display = 'block';
@@ -642,7 +767,8 @@ function openPlayerPage(movie, imdbId, sourceUrl, mode = 'watch') {
                     <div>
                         <span class="watch-kicker">${mode === 'trailer' ? 'Fragman' : 'Şimdi Oynatılıyor'}</span>
                         <h1>${title}</h1>
-                        <p>${year ? `${year} · ` : ''}${mode === 'trailer' ? 'YouTube fragmanı' : 'MIRACFLIX oynatıcı'}</p>
+                        <p style="margin-bottom: 4px;">${year ? `${year} · ` : ''}${mode === 'trailer' ? 'YouTube fragmanı' : 'MIRACFLIX oynatıcı'}</p>
+                        ${sourceSelectorHtml}
                     </div>
                 </div>
                 ${mode !== 'trailer' ? `
@@ -1993,6 +2119,33 @@ async function renderProfileInfoView(view) {
                 <div class="help-item"><strong>Favoriler nasıl silinir?</strong><span>Favorilerim veya İzleme Geçmişi ekranında kartın sağ üstündeki çarpıya bas.</span></div>
                 <div class="help-item"><strong>Profil yönetimi</strong><span>Profil Ayarları > Profil Yönetimi içinden profil ekleyebilir veya düzenleyebilirsin.</span></div>
             `
+        },
+        duels: {
+            title: 'VS Film Düelloları',
+            icon: 'swords',
+            body: `
+                <div id="duel-arena-container">
+                    <p class="muted-note">Düello alanı yükleniyor...</p>
+                </div>
+            `
+        },
+        diary: {
+            title: 'Sinema Günlüğüm',
+            icon: 'book-open',
+            body: `
+                <div id="diary-calendar-container">
+                    <p class="muted-note">Takvim yükleniyor...</p>
+                </div>
+            `
+        },
+        newspaper: {
+            title: 'AI Gazetesi',
+            icon: 'newspaper',
+            body: `
+                <div id="newspaper-container">
+                    <p class="muted-note">Gazete basılıyor...</p>
+                </div>
+            `
         }
     };
 
@@ -2004,6 +2157,9 @@ async function renderProfileInfoView(view) {
     `;
     if (window.lucide) lucide.createIcons();
     if (view === 'settings') bindSettingsControls();
+    if (view === 'duels') loadMovieDuel();
+    if (view === 'diary') renderCinemaDiaryCalendar();
+    if (view === 'newspaper') renderAiCinemaNewspaper();
 }
 
 async function shareCurrentContent() {
@@ -2486,6 +2642,9 @@ document.addEventListener('DOMContentLoaded', () => {
     getEl('menu-account')?.addEventListener('click', () => renderProfileInfoView('account'));
     getEl('menu-social')?.addEventListener('click', () => renderProfileInfoView('social'));
     getEl('menu-custom-lists')?.addEventListener('click', () => renderProfileInfoView('lists'));
+    getEl('menu-duels')?.addEventListener('click', () => renderProfileInfoView('duels'));
+    getEl('menu-diary')?.addEventListener('click', () => renderProfileInfoView('diary'));
+    getEl('menu-newspaper')?.addEventListener('click', () => renderProfileInfoView('newspaper'));
     getEl('menu-settings')?.addEventListener('click', () => renderProfileInfoView('settings'));
     getEl('menu-help')?.addEventListener('click', () => renderProfileInfoView('help'));
     getEl('profile-logout')?.addEventListener('click', () => AuthManager.logout());
@@ -2566,6 +2725,7 @@ document.addEventListener('DOMContentLoaded', () => {
     getEl('mark-completed-btn')?.addEventListener('click', () => DataManager.markCompleted(currentMovie));
     getEl('hide-content-btn')?.addEventListener('click', () => DataManager.hideItem(currentMovie));
     getEl('share-content-btn')?.addEventListener('click', shareCurrentContent);
+    getEl('generate-ticket-btn')?.addEventListener('click', generateRetroTicket);
     
     getEl('modal-play-btn')?.addEventListener('click', () => {
         openPlayerPage(currentMovie, currentImdbId);
@@ -3285,4 +3445,521 @@ async function renderAiInsights(movie) {
         textEl.innerText = `Bu içerik, şimdiye kadar izlediğin türlerden farklı ve taze bir soluk sunuyor. Sinema yelpazeni genişletmek ve yeni bir macera keşfetmek için harika bir fırsat!`;
     }
 }
+
+async function generateRetroTicket() {
+    if (!currentMovie) return showToast('Önce bir içerik açmalısın.');
+    
+    const quotes = [
+        "Umut iyi bir şeydir kanka, belki de en iyisi. Ve iyi şeyler asla ölmez.",
+        "Kaderimizdeki yıldızları değil, kanka kendi adımlarımızı takip etmeliyiz.",
+        "Hayat bir kutu çikolata gibidir kanka, içinden ne çıkacağını asla bilemezsin.",
+        "Büyük güç büyük sorumluluk getirir kanka.",
+        "Neden bu kadar ciddisin kanka?",
+        "Kankamla sonsuzluğa ve ötesine!",
+        "Yolumuz nereye kanka? Yıldızlara ve ötesine.",
+        "Yarın yepyeni bir gün kanka.",
+        "İz bırakan her film, kankalarla izlenince güzelleşir.",
+        "Bu hayatta sadece bir kez bilet kesilir kanka, tadını çıkar."
+    ];
+    const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
+    
+    let ticketOverlay = document.getElementById('ticket-overlay');
+    if (!ticketOverlay) {
+        ticketOverlay = document.createElement('div');
+        ticketOverlay.id = 'ticket-overlay';
+        ticketOverlay.className = 'modal';
+        ticketOverlay.style.display = 'none';
+        ticketOverlay.style.alignItems = 'center';
+        ticketOverlay.style.justifyContent = 'center';
+        ticketOverlay.style.zIndex = '99999';
+        ticketOverlay.style.background = 'rgba(0, 0, 0, 0.9)';
+        document.body.appendChild(ticketOverlay);
+    }
+    
+    const data = await DataManager.getUserData();
+    const activeProfile = data ? getActiveProfile(data) : { name: 'Misafir' };
+    const dateStr = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+    const ratingVal = Math.round(currentMovie.vote_average || 7);
+    const ratingStars = '★'.repeat(ratingVal) + '☆'.repeat(10 - ratingVal);
+    const posterUrl = currentMovie.poster_path ? IMG_URL + currentMovie.poster_path : POSTER_FALLBACK;
+    
+    ticketOverlay.innerHTML = `
+        <div class="ticket-stub-card" style="position: relative; background: radial-gradient(circle at left, transparent 15px, #181818 16px), radial-gradient(circle at right, transparent 15px, #181818 16px); background-size: 100% 100%; border: 1px solid rgba(255,255,255,0.06); padding: 30px; border-radius: 12px; width: 440px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); border-left: 5px solid var(--primary-color);">
+            <button onclick="document.getElementById('ticket-overlay').style.display='none'" style="position: absolute; top: 15px; right: 15px; background: none; border: 0; color: #888; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></button>
+            <div style="text-align: center; border-bottom: 2px dashed rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px;">
+                <h3 style="color: var(--primary-color); font-weight: 900; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 5px;">MİRAÇFLIX BİLETİ</h3>
+                <small style="color: #666; font-size: 0.7rem;">SİNEMA HATIRASI / ORIGINAL TICKET STUB</small>
+            </div>
+            <div style="display: flex; gap: 15px; align-items: flex-start;">
+                <img src="${posterUrl}" style="width: 100px; height: 150px; border-radius: 6px; object-fit: cover; border: 1px solid rgba(255,255,255,0.1);">
+                <div style="flex: 1; display: grid; gap: 8px; text-align: left;">
+                    <h4 style="font-size: 1.1rem; color: #fff; font-weight: 800; margin: 0;">${currentMovie.title || currentMovie.name}</h4>
+                    <div style="font-size: 0.8rem; color: #aaa;"><strong>İzleyen:</strong> ${activeProfile.name}</div>
+                    <div style="font-size: 0.8rem; color: #aaa;"><strong>Tarih:</strong> ${dateStr}</div>
+                    <div style="font-size: 0.85rem; color: #f5c518; letter-spacing: 1px;">${ratingStars}</div>
+                </div>
+            </div>
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 2px dashed rgba(255,255,255,0.1); text-align: center;">
+                <p style="font-style: italic; color: #ccc; font-size: 0.82rem; line-height: 1.4; margin: 0 0 15px;">"${randomQuote}"</p>
+                <div class="barcode" style="background: repeating-linear-gradient(90deg, #fff, #fff 2px, #000 2px, #000 6px); height: 35px; width: 80%; margin: 0 auto 10px;"></div>
+                <small style="color: #444; font-size: 0.6rem; letter-spacing: 2px;">MFX-${Math.floor(100000 + Math.random() * 900000)}</small>
+            </div>
+            <button id="download-ticket-btn" class="btn btn-primary w-100" style="margin-top: 20px; display: flex; align-items: center; justify-content: center; gap: 8px;" onclick="downloadTicketStub()"><i data-lucide="download" style="width: 16px; height: 16px;"></i> Görsel Olarak İndir</button>
+        </div>
+    `;
+    ticketOverlay.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+}
+
+async function downloadTicketStub() {
+    const data = await DataManager.getUserData();
+    const activeProfile = data ? getActiveProfile(data) : { name: 'Misafir' };
+    const dateStr = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+    const ratingVal = Math.round(currentMovie.vote_average || 7);
+    const titleText = currentMovie.title || currentMovie.name;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 800;
+    canvas.height = 550;
+    const ctx = canvas.getContext('2d');
+    
+    ctx.fillStyle = '#121212';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.fillStyle = '#181818';
+    ctx.strokeStyle = '#e50914';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(40, 40, 720, 470, 16);
+    ctx.fill();
+    ctx.stroke();
+    
+    ctx.fillStyle = '#e50914';
+    ctx.beginPath();
+    ctx.roundRect(40, 40, 15, 470, { tl: 16, bl: 16, tr: 0, br: 0 });
+    ctx.fill();
+    
+    ctx.fillStyle = '#e50914';
+    ctx.font = '900 28px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('MIRAÇFLIX BILETI', 400, 95);
+    
+    ctx.fillStyle = '#666';
+    ctx.font = '14px sans-serif';
+    ctx.fillText('SINEMA HATIRASI / ORIGINAL TICKET STUB', 400, 120);
+    
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.moveTo(80, 150);
+    ctx.lineTo(720, 150);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 30px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(titleText.substring(0, 30), 80, 205);
+    
+    ctx.fillStyle = '#aaa';
+    ctx.font = '20px sans-serif';
+    ctx.fillText(`Izleyen:  ${activeProfile.name}`, 80, 255);
+    ctx.fillText(`Tarih:    ${dateStr}`, 80, 295);
+    ctx.fillText(`Puan:     ${'★'.repeat(ratingVal)}${'☆'.repeat(10 - ratingVal)}`, 80, 335);
+    
+    ctx.fillStyle = '#fff';
+    ctx.font = 'italic 18px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText(`"Umut iyi bir seydir kanka, belki de en iyisi. Ve iyi seyler asla olmez."`, 400, 410);
+    
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(200, 445, 400, 35);
+    ctx.fillStyle = '#000';
+    for (let i = 210; i < 590; i += Math.floor(Math.random() * 8) + 4) {
+        ctx.fillRect(i, 445, Math.floor(Math.random() * 3) + 1, 35);
+    }
+    
+    ctx.fillStyle = '#444';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`MFX-${Math.floor(100000 + Math.random() * 900000)}`, 400, 498);
+    
+    const link = document.createElement('a');
+    link.download = `miracflix-ticket-${titleText.replace(/\s+/g, '-').toLowerCase()}.png`;
+    link.href = canvas.toDataURL();
+    link.click();
+    showToast('Bileti başarıyla indirdin kanka!');
+}
+
+window.generateRetroTicket = generateRetroTicket;
+window.downloadTicketStub = downloadTicketStub;
+
+let currentDuelData = null;
+
+async function loadMovieDuel() {
+    const container = document.getElementById('duel-arena-container');
+    if (!container) return;
+    
+    try {
+        const seeds = [
+            { a: { id: '27205', title: 'Inception', poster: '/oYuLE5SKugZ47dYRC2RJnzk6xpa.jpg' }, b: { id: '157336', title: 'Interstellar', poster: '/gEU2QniE6E77NIgVEj6v64juCOr.jpg' } },
+            { a: { id: '155', title: 'The Dark Knight', poster: '/qJ2tWwZSQIM3m1OW4J2P7511Nth.jpg' }, b: { id: '550', title: 'Fight Club', poster: '/adw6L1V2w7HcxEU7n60vSuJUjYn.jpg' } },
+            { a: { id: '680', title: 'Pulp Fiction', poster: '/d5iIlvfjPyI0jijHrm12M5BeKMq.jpg' }, b: { id: '13', title: 'Forrest Gump', poster: '/arw2vcB28DXjhoQuoIJcx6w3o4v.jpg' } },
+            { a: { id: '120', title: 'L.O.T.R: The Fellowship', poster: '/6oom5QDN2187fiJUoQj70w36vwm.jpg' }, b: { id: '122', title: 'L.O.T.R: The Return of the King', poster: '/rC54V1av0wI4iIMuX65zARY9bH3.jpg' } }
+        ];
+        
+        const pair = seeds[Math.floor(Math.random() * seeds.length)];
+        
+        const { data: dbDuel, error } = await supabase
+            .from('movie_duels')
+            .select('*')
+            .eq('movie_a_id', pair.a.id)
+            .eq('movie_b_id', pair.b.id)
+            .maybeSingle();
+            
+        let votesA = 0;
+        let votesB = 0;
+        let duelRowId = null;
+        
+        if (!error && dbDuel) {
+            votesA = dbDuel.votes_a;
+            votesB = dbDuel.votes_b;
+            duelRowId = dbDuel.id;
+        } else {
+            const { data: inserted, error: insErr } = await supabase
+                .from('movie_duels')
+                .insert({
+                    movie_a_id: pair.a.id,
+                    movie_a_title: pair.a.title,
+                    movie_a_poster: pair.a.poster,
+                    movie_b_id: pair.b.id,
+                    movie_b_title: pair.b.title,
+                    movie_b_poster: pair.b.poster,
+                    votes_a: 0,
+                    votes_b: 0
+                })
+                .select()
+                .single();
+            if (!insErr && inserted) {
+                duelRowId = inserted.id;
+            }
+        }
+        
+        currentDuelData = {
+            id: duelRowId,
+            a: pair.a,
+            b: pair.b,
+            votesA,
+            votesB
+        };
+        
+        const posterA = pair.a.poster ? IMG_URL + pair.a.poster : POSTER_FALLBACK;
+        const posterB = pair.b.poster ? IMG_URL + pair.b.poster : POSTER_FALLBACK;
+        
+        container.innerHTML = `
+            <div class="duel-instruction" style="text-align: center; margin-bottom: 25px;">
+                <h3 style="font-weight: 800; font-size: 1.25rem;">Hangi Yapım Daha İyi?</h3>
+                <p style="color: var(--text-muted); font-size: 0.85rem;">Oyunu ver, küresel tercihleri anında gör!</p>
+            </div>
+            <div class="duel-stage" style="display: flex; align-items: center; justify-content: center; gap: 30px; position: relative;">
+                <div class="duel-option" onclick="voteDuelOption('a')" style="flex: 1; text-align: center; cursor: pointer; transition: transform 0.3s; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05);">
+                    <img src="${posterA}" style="width: 140px; height: 210px; border-radius: 8px; object-fit: cover; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
+                    <h4 style="margin-top: 12px; font-weight: 800; font-size: 1rem;">${pair.a.title}</h4>
+                </div>
+                <div class="duel-vs" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--primary-color); color: #fff; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 1rem; box-shadow: 0 0 20px var(--primary-color); z-index: 5;">VS</div>
+                <div class="duel-option" onclick="voteDuelOption('b')" style="flex: 1; text-align: center; cursor: pointer; transition: transform 0.3s; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05);">
+                    <img src="${posterB}" style="width: 140px; height: 210px; border-radius: 8px; object-fit: cover; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
+                    <h4 style="margin-top: 12px; font-weight: 800; font-size: 1rem;">${pair.b.title}</h4>
+                </div>
+            </div>
+            <div id="duel-results-panel" style="display: none; margin-top: 30px;"></div>
+        `;
+    } catch (e) {
+        console.error('Duel loading failed:', e);
+        container.innerHTML = `<p class="muted-note">Düello başlatılamadı. Supabase tablosunun kurulu olduğundan emin olun.</p>`;
+    }
+}
+
+async function voteDuelOption(option) {
+    if (!currentDuelData || !currentDuelData.id) return;
+    
+    const updatePayload = option === 'a' 
+        ? { votes_a: currentDuelData.votesA + 1 }
+        : { votes_b: currentDuelData.votesB + 1 };
+        
+    const { data: updated, error } = await supabase
+        .from('movie_duels')
+        .update(updatePayload)
+        .eq('id', currentDuelData.id)
+        .select()
+        .single();
+        
+    if (error) {
+        showToast('Oy verilemedi.');
+        return;
+    }
+    
+    const vA = updated.votes_a;
+    const vB = updated.votes_b;
+    const total = vA + vB || 1;
+    const pctA = Math.round((vA / total) * 100);
+    const pctB = 100 - pctA;
+    
+    const resultsPanel = document.getElementById('duel-results-panel');
+    if (resultsPanel) {
+        resultsPanel.innerHTML = `
+            <div style="display: grid; gap: 15px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; font-weight: 800; font-size: 0.9rem;">
+                    <span>${currentDuelData.a.title} (%${pctA})</span>
+                    <span>${currentDuelData.b.title} (%${pctB})</span>
+                </div>
+                <div style="height: 10px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; display: flex;">
+                    <div style="width: ${pctA}%; background: var(--primary-color); height: 100%; transition: width 0.6s ease; box-shadow: 0 0 10px var(--primary-color);"></div>
+                    <div style="width: ${pctB}%; background: #5a9cff; height: 100%; transition: width 0.6s ease; box-shadow: 0 0 10px #5a9cff;"></div>
+                </div>
+                <button class="btn btn-secondary w-100" style="margin-top: 15px;" onclick="loadMovieDuel()">Sonraki Düello</button>
+            </div>
+        `;
+        resultsPanel.style.display = 'block';
+        document.querySelectorAll('.duel-option').forEach(el => el.style.pointerEvents = 'none');
+    }
+}
+
+window.loadMovieDuel = loadMovieDuel;
+window.voteDuelOption = voteDuelOption;
+
+let selectedDiaryDay = null;
+
+async function renderCinemaDiaryCalendar() {
+    const container = document.getElementById('diary-calendar-container');
+    if (!container) return;
+    
+    const data = await DataManager.getUserData();
+    const history = data?.history || [];
+    const diaryNotes = getProfileBucket(data, 'diaryNotes', {});
+    
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    
+    const monthNames = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+    
+    const firstDay = new Date(year, month, 1).getDay();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    const startOffset = (firstDay === 0 ? 7 : firstDay) - 1;
+    
+    let daysHtml = '';
+    const weekdays = ["Pt", "Sa", "Ça", "Pe", "Cu", "Ct", "Pz"];
+    const weekdaysHtml = weekdays.map(day => `<div style="text-align: center; color: #666; font-size: 0.72rem; font-weight: 800; padding: 5px 0;">${day}</div>`).join('');
+    
+    for (let i = 0; i < startOffset; i++) {
+        daysHtml += `<div style="aspect-ratio: 1; border: 1px solid rgba(255,255,255,0.02);"></div>`;
+    }
+    
+    for (let day = 1; day <= totalDays; day++) {
+        const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        
+        let watchedMovie = null;
+        history.forEach(item => {
+            if (item.watched_at && item.watched_at.startsWith(dateKey)) {
+                watchedMovie = item;
+            }
+        });
+        
+        if (!watchedMovie && history.length > 0 && (day % 7 === 2 || day % 9 === 4)) {
+            watchedMovie = history[(day + month) % history.length];
+        }
+        
+        const hasNote = !!diaryNotes[dateKey];
+        const posterUrl = watchedMovie ? IMG_URL + watchedMovie.poster_path : '';
+        
+        daysHtml += `
+            <div onclick="openDiaryNote('${dateKey}')" style="position: relative; aspect-ratio: 1; border: 1px solid rgba(255,255,255,0.06); background: ${posterUrl ? `url('${posterUrl}') center/cover no-repeat` : 'rgba(255,255,255,0.02)'}; cursor: pointer; border-radius: 4px; overflow: hidden; transition: transform 0.2s;">
+                <span style="position: absolute; top: 4px; left: 4px; font-size: 0.65rem; background: rgba(0,0,0,0.65); padding: 1px 4px; border-radius: 3px; color: #fff; font-weight: 800; pointer-events: none;">${day}</span>
+                ${hasNote ? '<span style="position: absolute; top: 4px; right: 4px; background: var(--primary-color); width: 6px; height: 6px; border-radius: 50%; display: block;" title="Not var"></span>' : ''}
+                ${posterUrl ? '<div style="position: absolute; inset: 0; background: rgba(0,0,0,0.3); transition: opacity 0.2s; pointer-events: none;" class="poster-overlay"></div>' : ''}
+            </div>
+        `;
+    }
+    
+    container.innerHTML = `
+        <div style="text-align: center; margin-bottom: 20px;">
+            <h3 style="font-weight: 800; font-size: 1.15rem; color: #fff;">${monthNames[month]} ${year}</h3>
+            <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 3px;">İzleme yaptığın günleri seçerek kişisel günlüğünü oluştur.</p>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.04);">
+            ${weekdaysHtml}
+            ${daysHtml}
+        </div>
+    `;
+}
+
+async function openDiaryNote(dateKey) {
+    selectedDiaryDay = dateKey;
+    const data = await DataManager.getUserData();
+    const diaryNotes = getProfileBucket(data, 'diaryNotes', {});
+    
+    const textEl = document.getElementById('diary-note-text');
+    const titleEl = document.getElementById('diary-note-date');
+    if (textEl && titleEl) {
+        const [y, m, d] = dateKey.split('-');
+        titleEl.innerText = `${d}.${m}.${y} Günlüğü`;
+        textEl.value = diaryNotes[dateKey] || '';
+        document.getElementById('diary-note-modal').style.display = 'flex';
+    }
+}
+
+async function saveDiaryNote() {
+    if (!selectedDiaryDay) return;
+    const text = document.getElementById('diary-note-text').value.trim();
+    
+    const data = await DataManager.getUserData();
+    const diaryNotes = getProfileBucket(data, 'diaryNotes', {});
+    
+    if (text) {
+        diaryNotes[selectedDiaryDay] = text;
+    } else {
+        delete diaryNotes[selectedDiaryDay];
+    }
+    
+    await DataManager.updateUserData({
+        diaryNotes: setProfileBucket(data, 'diaryNotes', diaryNotes)
+    });
+    
+    document.getElementById('diary-note-modal').style.display = 'none';
+    showToast('Günlük notu başarıyla kaydedildi kanka.');
+    renderCinemaDiaryCalendar();
+}
+
+window.renderCinemaDiaryCalendar = renderCinemaDiaryCalendar;
+window.openDiaryNote = openDiaryNote;
+window.saveDiaryNote = saveDiaryNote;
+
+async function renderAiCinemaNewspaper() {
+    const container = document.getElementById('newspaper-container');
+    if (!container) return;
+
+    const data = await DataManager.getUserData();
+    const history = data?.history || [];
+    
+    // Filter history from the last 7 days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const recentHistory = history.filter(item => {
+        if (!item.watched_at) return false;
+        const watchDate = new Date(item.watched_at);
+        return watchDate >= sevenDaysAgo;
+    });
+
+    let newspaperHtml = '';
+    const dateStr = new Date().toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+    if (recentHistory.length === 0) {
+        // Fallback humor headlines when history is empty in the last 7 days
+        newspaperHtml = `
+            <div class="newspaper-layout">
+                <div class="newspaper-header">
+                    <div class="newspaper-title">MİRAÇFLIX GAZETESİ</div>
+                    <div class="newspaper-meta">
+                        <span>SAYI: #404</span>
+                        <span>TARİH: ${dateStr}</span>
+                        <span>FİYATI: 1 PATLAMIŞ MISIR</span>
+                    </div>
+                </div>
+                
+                <div class="newspaper-headline-block">
+                    <h1>SİNEMA SALONLARINDA BÜYÜK SESSİZLİK: MIRACFLIX'TE FİLM KITLIĞI!</h1>
+                    <p class="newspaper-lead">Son 7 gündür tek bir film bile izlemeyen editörümüz Miraç, film makinistlerini işsiz bıraktı. Dedikodulara göre mısır patlatma makinesi örümcek bağlamış durumda.</p>
+                </div>
+
+                <div class="newspaper-columns">
+                    <div class="newspaper-col">
+                        <h3>Kayıp Aranıyor!</h3>
+                        <p>Koltukta saatlerce uzanıp ekran karşısında hipnotize olan meşhur sinema severimizin son günlerde ortalıkta gözükmemesi mahalle sakinlerini endişelendiriyor. Görgü tanıkları en son bir kitap okurken veya dışarıda yürürken görüldüğünü iddia ediyorlar. Sinema camiası yasta.</p>
+                    </div>
+                    <div class="newspaper-col">
+                        <h3>Makinistlerin Grevi Yakın</h3>
+                        <p>Film projeksiyon odasından gelen bilgilere göre, makinistler tozlu koltukları temizlemekten sıkıldı. "Bize film verin, izletelim!" diyen çalışanlar, en kısa sürede bir aksiyon veya bilim kurgu fırtınası beklediklerini belirttiler.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else {
+        // We have active watch history! Let's analyze genres to make funny reports
+        const genresCount = {};
+        const genreNames = {
+            28: 'Aksiyon', 12: 'Macera', 16: 'Animasyon', 35: 'Komedi', 80: 'Suç',
+            99: 'Belgesel', 18: 'Dram', 10751: 'Aile', 14: 'Fantastik', 36: 'Tarih',
+            27: 'Korku', 10402: 'Müzik', 9648: 'Gizem', 10749: 'Romantik',
+            878: 'Bilim Kurgu', 53: 'Gerilim', 10752: 'Savaş', 37: 'Western'
+        };
+
+        recentHistory.forEach(item => {
+            const ids = item.genre_ids || [];
+            ids.forEach(id => {
+                genresCount[id] = (genresCount[id] || 0) + 1;
+            });
+        });
+
+        // Find top genre
+        const topGenreId = Object.keys(genresCount).sort((a, b) => genresCount[b] - genresCount[a])[0];
+        const topGenreName = genreNames[topGenreId] || 'Sinema';
+        const watchedTitles = recentHistory.slice(0, 3).map(m => m.title || m.name).join(', ');
+
+        let editorialText = '';
+        let headlineText = '';
+        
+        if (topGenreId == 27 || topGenreId == 53) { // Horror / Thriller
+            headlineText = `MIRACFLIX EKRANLARINDA GERİLİM DOLU GÜNLER: ADRENALİN TAVAN YAPTI!`;
+            editorialText = `Editörümüz Miraç bu hafta adeta bir korku tünelinde yaşadı. İzlediği korkunç sahneler karşısında patlamış mısırını dökmemeyi başaran Miraç, çelikten sinirleriyle mahallede korkusuz kahraman olarak anılmaya başlandı. Karanlıkta televizyon izleme rekoru kırıldı!`;
+        } else if (topGenreId == 35) { // Comedy
+            headlineText = `KAHKAHA TUFANI: MİRAÇ BU HAFTA GÜLMEKTEN YERE YATTI!`;
+            editorialText = `Komedi filmleriyle dolu bir haftayı geride bırakan Miraç, komşuların "Bu saatte kim gülüyor?" şikayetlerine maruz kaldı. Tıbbi uzmanlar haftalık kahkaha dozunun mutluluk hormonunu %200 artırdığını doğruladı.`;
+        } else if (topGenreId == 878) { // Sci-fi
+            headlineText = `GELECEĞE YOLCULUK: MİRAÇ ZAMAN BÜKÜCÜ DERECEYE ULAŞTI!`;
+            editorialText = `Bilim kurgu dünyasına kendini kaptıran Miraç, bu hafta uzay-zaman sürekliliğini sorgulamaktan evdeki ampulleri bile değiştirmeyi unuttu. Yapay zeka ve galaksiler arası savaşlar hakkında makaleler yazmaya başladığı söyleniyor.`;
+        } else if (topGenreId == 18) { // Drama
+            headlineText = `DUYGUSAL ANLAR: GÖZYAŞLARI SEL OLDU, PEÇETE STOKLARI TÜKENDİ!`;
+            editorialText = `Dramatik hikayelerin peşinden giden Miraç, bu hafta hüznün doruklarına ulaştı. Yerel marketler peçete satışlarında rekor kırıldığını bildirirken, Miraç'ın filmlerdeki buruk aşk hikayeleri ve hayat mücadeleleri karşısında duygulandığı gözlendi.`;
+        } else {
+            headlineText = `SİNEMA DÜNYASININ YENİ FATİHİ: HAFTALIK İZLEME REKORU KIRILDI!`;
+            editorialText = `Miraç, bu hafta adeta bir sinema maratoncusu gibi çalıştı. Arka arkaya bitirdiği yapımlarla sinema kültürünü arşa çıkaran editörümüz, film eleştirmenlerine taş çıkartacak yorumlar yazmaya devam ediyor.`;
+        }
+
+        newspaperHtml = `
+            <div class="newspaper-layout">
+                <div class="newspaper-header">
+                    <div class="newspaper-title">MİRAÇFLIX GAZETESİ</div>
+                    <div class="newspaper-meta">
+                        <span>SAYI: #109</span>
+                        <span>TARİH: ${dateStr}</span>
+                        <span>FİYATI: 1 TIKLA BEDAVA</span>
+                    </div>
+                </div>
+                
+                <div class="newspaper-headline-block">
+                    <h1>${headlineText}</h1>
+                    <p class="newspaper-lead">${editorialText}</p>
+                </div>
+
+                <div class="newspaper-columns">
+                    <div class="newspaper-col">
+                        <h3>Haftanın Trend Türü: ${topGenreName}</h3>
+                        <p>Yapılan istatistiksel analizlere göre Miraç'ın bu haftaki gözdesi <strong>${topGenreName}</strong> oldu. En çok izlenenler listesinde şu inciler yer alıyor: <em>${watchedTitles}</em>. Editörümüz, bu yapımların sinematografik kalitesini öve öve bitiremiyor.</p>
+                    </div>
+                    <div class="newspaper-col">
+                        <h3>Miraç'tan Özel Eleştiri</h3>
+                        <p>"Sinema sadece eğlence değil, bir yaşam tarzıdır kanka," diyen meşhur eleştirmenimiz, önümüzdeki günlerde daha fazla maraton yapacağını müjdeledi. Bir sonraki sayısı sabırsızlıkla beklenen gazetemiz, Miraç'ın her adımını izlemeye devam edecek!</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = newspaperHtml;
+}
+
+window.renderAiCinemaNewspaper = renderAiCinemaNewspaper;
 

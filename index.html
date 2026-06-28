@@ -14,8 +14,18 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        if (!window.lucide) {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"><\/script>');
+        }
+    </script>
     <!-- Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        if (!window.supabase) {
+            document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');
+        }
+    </script>
 </head>
 
 <body>
@@ -303,6 +313,7 @@
                             <button id="mark-completed-btn" class="btn-xl secondary compact-action" title="İzlendi olarak işaretle"><i data-lucide="check-circle-2"></i></button>
                             <button id="hide-content-btn" class="btn-xl secondary compact-action" title="Bunu gösterme"><i data-lucide="eye-off"></i></button>
                             <button id="share-content-btn" class="btn-xl secondary compact-action" title="Bu filmi öner"><i data-lucide="send"></i></button>
+                            <button id="generate-ticket-btn" class="btn-xl secondary compact-action" title="Bilet Kes"><i data-lucide="ticket"></i></button>
                         </div>
 
                         <div class="modal-credit-stack">
@@ -524,6 +535,9 @@
                         <li id="menu-account"><i data-lucide="user"></i> Hesap</li>
                         <li id="menu-social"><i data-lucide="users-round"></i> Sosyal</li>
                         <li id="menu-custom-lists"><i data-lucide="list-plus"></i> Listelerim</li>
+                        <li id="menu-duels"><i data-lucide="swords"></i> VS Düello</li>
+                        <li id="menu-diary"><i data-lucide="book-open"></i> Sinema Günlüğüm</li>
+                        <li id="menu-newspaper"><i data-lucide="newspaper"></i> AI Gazetesi</li>
                         <li id="menu-settings"><i data-lucide="settings"></i> Ayarlar</li>
                         <li id="menu-help"><i data-lucide="help-circle"></i> Yardım Merkezi</li>
                         <li id="profile-logout" class="logout"><i data-lucide="log-out"></i> Çıkış Yap</li>
@@ -548,6 +562,23 @@
                     <button id="save-edit-profile-btn" class="btn btn-primary w-100">Kaydet</button>
                     <button id="delete-profile-btn" class="btn-danger-outline w-100">Profili Sil</button>
                     <button id="cancel-edit-profile-btn" class="btn-dark-w100">İptal</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Diary Note Modal -->
+        <div id="diary-note-modal" class="modal" style="display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.9); z-index: 9100;">
+            <div class="form-card" style="max-width: 450px; width: 90%; text-align: center; position: relative;">
+                <button class="close-modal" onclick="document.getElementById('diary-note-modal').style.display='none'" style="position: absolute; top: 15px; right: 15px; left: auto; width: 36px; height: 36px; background: rgba(255,255,255,0.08);"><i data-lucide="x"></i></button>
+                <span class="section-kicker">KİŞİSEL SİNEMA GÜNLÜĞÜ</span>
+                <h2 id="diary-note-date" style="font-size: 1.5rem; margin-bottom: 15px;">Günlük Notu</h2>
+                <div class="input-group">
+                    <label>Bugün ne hissettin kanka? (Kimle izledin, ne yedin vb.)</label>
+                    <textarea id="diary-note-text" placeholder="Bu film hakkında özel düşüncelerin..." style="width: 100%; height: 120px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 12px; border-radius: 6px; resize: none; font-size: 0.95rem; font-family: inherit; outline: none;"></textarea>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 25px;">
+                    <button class="btn btn-primary w-100" onclick="saveDiaryNote()">Kaydet</button>
+                    <button class="btn btn-secondary w-100" onclick="document.getElementById('diary-note-modal').style.display='none'">İptal</button>
                 </div>
             </div>
         </div>
