@@ -6,6 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MIRACFLIX | Film ve Dizi İzle</title>
     <meta name="description" content="En yeni film ve dizileri IMDb kalitesinde izleyin.">
+    <meta name="theme-color" content="#000000">
+    <meta property="og:title" content="MIRACFLIX | Film ve Dizi İzle">
+    <meta property="og:description" content="En yeni film ve dizileri IMDb kalitesinde izleyin.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://miracflix.netlify.app">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="canonical" href="https://miracflix.netlify.app">
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/png" href="/favicon.png">
     <!-- Google Fonts -->
@@ -13,17 +20,23 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.460.0" crossorigin="anonymous"></script>
     <script>
         if (!window.lucide) {
-            document.write('<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"><\/script>');
+            var s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js';
+            s.crossOrigin = 'anonymous';
+            document.head.appendChild(s);
         }
     </script>
     <!-- Supabase JS -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" crossorigin="anonymous"></script>
     <script>
         if (!window.supabase) {
-            document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');
+            var s2 = document.createElement('script');
+            s2.src = 'https://unpkg.com/@supabase/supabase-js@2';
+            s2.crossOrigin = 'anonymous';
+            document.head.appendChild(s2);
         }
     </script>
 </head>
@@ -54,9 +67,9 @@
                 </ul>
             </div>
             <div class="nav-right">
-                <button id="surprise-btn" class="nav-icon-btn" title="Rastgele İçerik"><i data-lucide="shuffle"></i></button>
+                <button id="surprise-btn" class="nav-icon-btn" title="Rastgele İçerik" aria-label="Rastgele İçerik"><i data-lucide="shuffle"></i></button>
                 <div class="notification-center">
-                    <button id="notif-btn" class="nav-icon-btn"><i data-lucide="bell"></i><span class="notif-badge" id="notif-badge" style="display:none;"></span></button>
+                    <button id="notif-btn" class="nav-icon-btn" aria-label="Bildirimler"><i data-lucide="bell"></i><span class="notif-badge" id="notif-badge" style="display:none;"></span></button>
                     <!-- Notification Dropdown -->
                     <div id="notif-dropdown" class="notif-dropdown" style="display: none;">
                         <div class="notif-header">Bildirimler</div>
@@ -65,8 +78,8 @@
                         </div>
                     </div>
                 </div>
-                <button id="search-btn" class="search-icon-btn"><i data-lucide="search"></i></button>
-                <div class="user-profile" id="user-profile-btn">
+                <button id="search-btn" class="search-icon-btn" aria-label="Arama"><i data-lucide="search"></i></button>
+                <div class="user-profile" id="user-profile-btn" role="button" tabindex="0" aria-label="Profil Menüsü">
                     <img src="" alt="Profile">
                 </div>
             </div>
@@ -77,7 +90,7 @@
             <div class="search-panel">
                 <div class="search-overlay-content">
                     <input type="text" id="search-input" placeholder="Film, dizi, oyuncu, yönetmen ara...">
-                    <button id="close-search"><i data-lucide="x"></i></button>
+                    <button id="close-search" aria-label="Aramayı Kapat"><i data-lucide="x"></i></button>
                 </div>
                 <div class="advanced-search-controls">
                     <select id="search-type">
@@ -158,72 +171,72 @@
             <section id="continue-watching-section" class="movie-row" style="display: none;">
                 <h2>İzlemeye Devam Et</h2>
                 <div class="slider-container">
-                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <button class="slider-btn prev" aria-label="Önceki"><i data-lucide="chevron-left"></i></button>
                     <div id="continue-watching-list" class="movie-list"></div>
-                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                    <button class="slider-btn next" aria-label="Sonraki"><i data-lucide="chevron-right"></i></button>
                 </div>
             </section>
 
             <section id="my-list-section" class="movie-row personal-row" style="display: none;">
                 <h2>Sonra İzle</h2>
                 <div class="slider-container">
-                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <button class="slider-btn prev" aria-label="Önceki"><i data-lucide="chevron-left"></i></button>
                     <div id="my-list" class="movie-list"></div>
-                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                    <button class="slider-btn next" aria-label="Sonraki"><i data-lucide="chevron-right"></i></button>
                 </div>
             </section>
 
             <section id="popular-row" class="movie-row standard-row">
                 <h2>Popüler Filmler</h2>
                 <div class="slider-container">
-                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <button class="slider-btn prev" aria-label="Önceki"><i data-lucide="chevron-left"></i></button>
                     <div id="popular-movies" class="movie-list"></div>
-                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                    <button class="slider-btn next" aria-label="Sonraki"><i data-lucide="chevron-right"></i></button>
                 </div>
             </section>
 
             <section id="trending-tv-row" class="movie-row standard-row">
                 <h2>Trend Diziler</h2>
                 <div class="slider-container">
-                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <button class="slider-btn prev" aria-label="Önceki"><i data-lucide="chevron-left"></i></button>
                     <div id="trending-tv" class="movie-list"></div>
-                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                    <button class="slider-btn next" aria-label="Sonraki"><i data-lucide="chevron-right"></i></button>
                 </div>
             </section>
 
             <section id="top-rated-row" class="movie-row standard-row">
                 <h2>En Çok Oy Alanlar</h2>
                 <div class="slider-container">
-                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <button class="slider-btn prev" aria-label="Önceki"><i data-lucide="chevron-left"></i></button>
                     <div id="top-rated" class="movie-list"></div>
-                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                    <button class="slider-btn next" aria-label="Sonraki"><i data-lucide="chevron-right"></i></button>
                 </div>
             </section>
 
             <section id="mystery-row" class="movie-row discovery-row">
                 <h2>Gizemli Diziler</h2>
                 <div class="slider-container">
-                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <button class="slider-btn prev" aria-label="Önceki"><i data-lucide="chevron-left"></i></button>
                     <div id="mystery-tv" class="movie-list"></div>
-                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                    <button class="slider-btn next" aria-label="Sonraki"><i data-lucide="chevron-right"></i></button>
                 </div>
             </section>
 
             <section id="nineties-row" class="movie-row discovery-row">
                 <h2>90'lar Filmleri</h2>
                 <div class="slider-container">
-                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <button class="slider-btn prev" aria-label="Önceki"><i data-lucide="chevron-left"></i></button>
                     <div id="nineties-movies" class="movie-list"></div>
-                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                    <button class="slider-btn next" aria-label="Sonraki"><i data-lucide="chevron-right"></i></button>
                 </div>
             </section>
 
             <section id="imdb-row" class="movie-row discovery-row">
                 <h2>IMDb 8+ Seçkisi</h2>
                 <div class="slider-container">
-                    <button class="slider-btn prev"><i data-lucide="chevron-left"></i></button>
+                    <button class="slider-btn prev" aria-label="Önceki"><i data-lucide="chevron-left"></i></button>
                     <div id="imdb-eight-plus" class="movie-list"></div>
-                    <button class="slider-btn next"><i data-lucide="chevron-right"></i></button>
+                    <button class="slider-btn next" aria-label="Sonraki"><i data-lucide="chevron-right"></i></button>
                 </div>
             </section>
 
@@ -445,7 +458,7 @@
             <!-- Profile Management View -->
             <div id="collection-form-container" class="collection-form-container" style="display: none;">
                 <div id="profiles-view" class="profile-form-view" style="display: none;">
-                    <h1>Kim İzliyor?</h1>
+                    <h2>Kim İzliyor?</h2>
                     <div class="profiles-container"></div>
                     <button id="manage-profiles-btn" class="btn-xl secondary" style="margin-top: 40px; padding: 12px 30px; font-size: 1rem;">Profilleri Yönet</button>
                 </div>
@@ -461,9 +474,9 @@
         </div>
 
         <!-- Auth Modal -->
-        <div id="auth-modal" class="modal auth-modal" style="display: none;">
+        <div id="auth-modal" class="modal auth-modal" style="display: none;" role="dialog" aria-modal="true">
             <div class="auth-content">
-                <button class="close-auth"><i data-lucide="x"></i></button>
+                <button class="close-auth" aria-label="Kapat"><i data-lucide="x"></i></button>
                 <h2 id="auth-title">Giriş Yap</h2>
                 <form id="auth-form">
                     <div class="auth-input-group">
@@ -481,9 +494,9 @@
         </div>
 
         <!-- Decision Wheel Modal -->
-        <div id="wheel-modal" class="modal" style="display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.92); z-index: 9500;">
+        <div id="wheel-modal" class="modal" style="display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.92); z-index: 9500;" role="dialog" aria-modal="true">
             <div class="form-card" style="max-width: 550px; text-align: center; position: relative;">
-                <button class="close-modal" id="close-wheel" style="position: absolute; top: 15px; right: 15px; left: auto; width: 36px; height: 36px; background: rgba(255,255,255,0.08);"><i data-lucide="x"></i></button>
+                <button class="close-modal" id="close-wheel" style="position: absolute; top: 15px; right: 15px; left: auto; width: 36px; height: 36px; background: rgba(255,255,255,0.08);" aria-label="Kapat"><i data-lucide="x"></i></button>
                 <span class="section-kicker">ŞANSINI DENE</span>
                 <h2 style="font-size: 2rem; margin-bottom: 10px;">Ne İzlesem? Çarkı</h2>
                 <div style="display: flex; justify-content: center; gap: 15px; align-items: center; margin-bottom: 15px;">
@@ -511,9 +524,9 @@
         </div>
 
         <!-- Profile Settings Modal -->
-        <div id="profile-settings-modal" class="modal">
+        <div id="profile-settings-modal" class="modal" role="dialog" aria-modal="true">
             <div class="modal-content profile-content">
-                <button class="close-profile-settings"><i data-lucide="x"></i></button>
+                <button class="close-profile-settings" aria-label="Kapat"><i data-lucide="x"></i></button>
                 <div id="profile-main-view">
                     <div class="profile-header">
                         <h2>Profil Ayarları</h2>
@@ -547,7 +560,7 @@
         </div>
 
         <!-- Add/Edit Profile Modal (Nested for Profile Management) -->
-        <div id="edit-profile-modal" class="modal" style="z-index: 9000; background: rgba(0,0,0,0.95); align-items: center; justify-content: center;">
+        <div id="edit-profile-modal" class="modal" style="z-index: 9000; background: rgba(0,0,0,0.95); align-items: center; justify-content: center;" role="dialog" aria-modal="true">
             <div class="form-card" style="max-width: 450px; width: 90%; text-align: center;">
                 <h2 id="edit-profile-title">Profili Düzenle</h2>
                 <div class="profile-avatar-wrapper" style="margin: 30px auto; width: 150px; height: 150px;">
@@ -555,7 +568,7 @@
                 </div>
                 <div id="avatar-gallery" class="avatar-gallery"></div>
                 <div class="input-group">
-                    <label>Profil Adı</label>
+                    <label for="edit-profile-name-input">Profil Adı</label>
                     <input type="text" id="edit-profile-name-input" placeholder="İsim">
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 30px;">
@@ -567,7 +580,7 @@
         </div>
 
         <!-- Diary Note Modal -->
-        <div id="diary-note-modal" class="modal" style="display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.9); z-index: 9100;">
+        <div id="diary-note-modal" class="modal" style="display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.9); z-index: 9100;" role="dialog" aria-modal="true">
             <div class="form-card" style="max-width: 450px; width: 90%; text-align: center; position: relative;">
                 <button class="close-modal" onclick="document.getElementById('diary-note-modal').style.display='none'" style="position: absolute; top: 15px; right: 15px; left: auto; width: 36px; height: 36px; background: rgba(255,255,255,0.08);"><i data-lucide="x"></i></button>
                 <span class="section-kicker">KİŞİSEL SİNEMA GÜNLÜĞÜ</span>
@@ -584,7 +597,7 @@
         </div>
 
         <!-- Player Overlay -->
-        <div id="player-sub-overlay" class="player-sub-overlay" style="display: none;">
+        <div id="player-sub-overlay" class="player-sub-overlay" style="display: none;" role="dialog" aria-modal="true">
             <button class="close-player"><i data-lucide="arrow-left"></i> Geri Dön</button>
             <div id="player-container" class="player-container"></div>
         </div>

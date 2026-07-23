@@ -65,7 +65,7 @@ if (!supabase) {
 
 // Configuration
 const API_KEY = import.meta.env?.VITE_TMDB_API_KEY || '20a0abcbeaf2431b5807118f4fe80c5e'; 
-const BASE_URL = 'https://api.themoviedb.org/3';
+const BASE_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'https://api.themoviedb.org/3' : '/api-tmdb/3';
 const IMG_URL = 'https://image.tmdb.org/t/p/w500';
 const BACKDROP_URL = 'https://image.tmdb.org/t/p/original';
 const POSTER_FALLBACK = 'https://placehold.co/400x600/181818/ffffff?text=MIRACFLIX';
@@ -113,12 +113,6 @@ const SEARCH_TOPIC_KEYWORDS = {
     courtroom: 'courtroom legal',
     'based on true story': 'based on true story'
 };
-const APP_PRODUCTION_URL = 'https://miracflix.netlify.app';
-
-function getAuthRedirectUrl() {
-    const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-    return isLocal ? APP_PRODUCTION_URL : window.location.origin;
-}
 
 const getEl = (id) => document.getElementById(id);
 
@@ -382,11 +376,6 @@ function getPersonRoleLabel(department = '') {
     return 'Oyuncu';
 }
 
-function getPersonPageTitle(name, department = '') {
-    const normalized = getPersonRoleLabel(department);
-    return `${name} ${normalized === 'Oyuncu' ? 'Filmleri' : 'Sayfası'}`;
-}
-
 function getActiveProfile(data) {
     const profiles = data?.profiles || [{ name: 'Kullanıcı' }];
     return profiles[getActiveProfileIndex()] || profiles[0] || { name: 'Kullanıcı' };
@@ -446,6 +435,7 @@ async function getCommentReactions() {
 }
 
 window.likeComment = async (commentId) => {
+    if (!currentMovie) return;
     const data = await DataManager.getUserData();
     const likes = await getCommentLikes();
     const reactions = await getCommentReactions();
@@ -533,29 +523,18 @@ window.openCommentProfile = async (userId, username, avatarUrl = '') => {
 
     if (userId && userId !== 'null') {
         try {
-            const { data: profileData, error } = await supabase
-                .from('user_data')
-                .select('*')
-                .eq('id', userId)
-                .maybeSingle();
+            const [profileRes, listRes] = await Promise.all([
+                supabase.from('user_data').select('*').eq('id', userId).maybeSingle(),
+                supabase.from('custom_lists').select('id, name, description').eq('user_id', userId).eq('is_public', true).limit(8)
+            ]);
 
-            if (!error && profileData) {
-                publicHistory = (profileData.history || []).map(item => normalizeStoredMedia(item, getStoredMediaType(item))).slice(0, 8);
-                publicLists = flattenPublicLists(profileData.customLists || profileData.customlists).slice(0, 8);
+            if (!profileRes.error && profileRes.data) {
+                publicHistory = (profileRes.data.history || []).map(item => normalizeStoredMedia(item, getStoredMediaType(item))).slice(0, 8);
+                publicLists = flattenPublicLists(profileRes.data.customLists || profileRes.data.customlists).slice(0, 8);
             }
-        } catch (error) {
-            console.warn('Public profile user_data could not be loaded:', error);
-        }
 
-        try {
-            const { data: dbLists, error: listError } = await supabase
-                .from('custom_lists')
-                .select('id, name, description')
-                .eq('user_id', userId)
-                .eq('is_public', true)
-                .limit(8);
-
-            if (!listError && dbLists?.length) {
+            if (!listRes.error && listRes.data?.length) {
+                const dbLists = listRes.data;
                 const listIds = dbLists.map(list => list.id);
                 const { data: rows = [], error: itemError } = await supabase
                     .from('custom_list_items')
@@ -576,7 +555,7 @@ window.openCommentProfile = async (userId, username, avatarUrl = '') => {
                 }
             }
         } catch (error) {
-            console.warn('Public profile custom lists could not be loaded:', error);
+            console.warn('Public profile data could not be loaded:', error);
         }
     }
 
@@ -591,7 +570,8 @@ window.openCommentProfile = async (userId, username, avatarUrl = '') => {
         </button>
     `).join('');
 
-    getEl('account-view').querySelector('.form-card').innerHTML = `
+    const formCard = getEl('account-view')?.querySelector('.form-card');
+    if (formCard) formCard.innerHTML = `
         <div class="public-profile-header">
             <img src="${avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${safeName}`}" alt="${escapeHtml(safeName)}">
             <div>
@@ -760,7 +740,7 @@ function openPlayerPage(movie, imdbId, sourceUrl, mode = 'watch') {
     getEl('player-sub-overlay').style.display = 'block';
     document.body.style.overflow = 'hidden';
     getEl('player-container').innerHTML = `
-        <div class="watch-shell" style="${backdrop ? `--watch-bg: url('${backdrop}')` : ''}">
+        <div class="watch-shell" style="${backdrop ? `--watch-bg: url('${backdrop.replace(/["'()]/g, '')}')` : ''}">
             <div class="watch-meta" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
                 <div style="display: flex; align-items: center; gap: 18px;">
                     <img src="${poster}" alt="${title}" class="watch-poster">
@@ -782,7 +762,7 @@ function openPlayerPage(movie, imdbId, sourceUrl, mode = 'watch') {
                 <button type="button" class="player-fullscreen-btn" onclick="togglePlayerFullscreen()" title="Tam ekran">
                     <i data-lucide="maximize"></i>
                 </button>
-                ${source ? `<iframe src="${source}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen webkitallowfullscreen mozallowfullscreen referrerpolicy="no-referrer"></iframe>` : `
+                ${source ? `<iframe src="${source}" sandbox="allow-scripts allow-same-origin allow-forms" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen webkitallowfullscreen mozallowfullscreen referrerpolicy="no-referrer"></iframe>` : `
                     <div class="watch-unavailable">
                         <i data-lucide="circle-alert"></i>
                         <h2>Oynatıcı kaynağı bulunamadı</h2>
@@ -1119,7 +1099,7 @@ const DataManager = {
             return;
         }
         
-        sharedListsCache[name] = {
+        sharedListsCache[newRow.id] = {
             id: newRow.id,
             name: newRow.name,
             collaborators: newRow.collaborators,
@@ -1304,11 +1284,11 @@ function renderMovies(movies, container, type = 'movie', options = {}) {
         const removeArgs = options.removeArgs ? `, ${options.removeArgs}` : '';
         return `
         <div class="movie-card ${options.removable ? 'is-removable' : ''} ${completed ? 'is-watched' : ''}" onclick="openModalById(${movie.id}, '${mediaType}')">
-            <img src="${movie.poster_path ? IMG_URL + movie.poster_path : POSTER_FALLBACK}" alt="${movie.title || movie.name}" loading="lazy">
+            <img src="${movie.poster_path ? IMG_URL + movie.poster_path : POSTER_FALLBACK}" alt="${escapeHtml(movie.title || movie.name)}" loading="lazy">
             ${completed ? '<span class="watched-badge"><i data-lucide="check"></i> İzlendi</span>' : ''}
             ${lastEpisode ? `<span class="episode-badge">S${lastEpisode.season} B${lastEpisode.episode}</span>` : ''}
             <div class="card-info">
-                <h4>${movie.title || movie.name}</h4>
+                <h4>${escapeHtml(movie.title || movie.name)}</h4>
                 <p>${(movie.release_date || movie.first_air_date || '').split('-')[0]}${progress?.percent ? ` · %${progress.percent}` : ''}</p>
             </div>
             ${progress?.percent ? `<div class="card-progress"><span style="width:${progress.percent}%"></span></div>` : ''}
@@ -1419,9 +1399,9 @@ async function renderSeasonGuide(show) {
         list.innerHTML = (data.episodes || []).map(episode => {
             const isCurrent = currentEpisode?.season === seasonNumber && currentEpisode?.episode === episode.episode_number;
             return `
-                <button class="episode-card ${isCurrent ? 'active' : ''}" type="button" onclick="selectEpisode(${seasonNumber}, ${episode.episode_number}, '${(episode.name || '').replace(/'/g, "\\'")}')">
+                <button class="episode-card ${isCurrent ? 'active' : ''}" type="button" data-season="${seasonNumber}" data-episode="${episode.episode_number}" data-title="${escapeHtml(episode.name || '')}" onclick="selectEpisode(this.dataset.season, this.dataset.episode, this.dataset.title)">
                     <span>Bölüm ${episode.episode_number}</span>
-                    <strong>${episode.name || 'Bölüm adı yok'}</strong>
+                    <strong>${escapeHtml(episode.name || 'Bölüm adı yok')}</strong>
                     <small>${episode.runtime ? `${episode.runtime} dk` : (episode.air_date || '').split('-')[0] || 'Tarih yok'}</small>
                 </button>
             `;
@@ -1475,7 +1455,7 @@ function highlightStars(rating) {
 
 async function saveRating(rating) {
     const user = await AuthManager.getUser();
-    if (!user) return alert('Puan vermek için giriş yapmalısınız.');
+    if (!user) return showToast('Puan vermek için giriş yapmalısınız.');
     
     const { error } = await supabase
         .from('ratings')
@@ -1485,7 +1465,7 @@ async function saveRating(rating) {
             rating: rating
         }, { onConflict: ['user_id', 'movie_id'] });
         
-    if (error) alert('Hata: ' + error.message);
+    if (error) showToast('Hata: ' + error.message);
     else fetchMiracScore(currentMovie.id);
 }
 
@@ -1512,19 +1492,19 @@ async function fetchComments(movieId) {
         const likeCount = liked ? 1 : Math.min(1, likes[c.id] || 0);
         return `
         <div class="comment-card">
-            <button type="button" class="comment-profile-link" onclick="openCommentProfile('${c.user_id || ''}', '${escapeInline(c.username)}', '${escapeInline(avatar)}')" title="${c.username} profiline git">
-                <img src="${avatar}" class="comment-avatar" alt="${c.username}">
+            <button type="button" class="comment-profile-link" onclick="openCommentProfile('${c.user_id || ''}', '${escapeInline(c.username)}', '${escapeInline(avatar)}')" title="${escapeHtml(c.username)} profiline git">
+                <img src="${escapeHtml(avatar)}" class="comment-avatar" alt="${escapeHtml(c.username)}">
             </button>
             <div class="comment-info">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                    <button type="button" class="comment-name-link" onclick="openCommentProfile('${c.user_id || ''}', '${escapeInline(c.username)}', '${escapeInline(avatar)}')">${c.username}</button>
+                    <button type="button" class="comment-name-link" onclick="openCommentProfile('${c.user_id || ''}', '${escapeInline(c.username)}', '${escapeInline(avatar)}')">${escapeHtml(c.username)}</button>
                     ${user && user.id === c.user_id ? `
                         <div class="comment-actions">
                             <button onclick="deleteComment('${c.id}')" title="Sil"><i data-lucide="trash-2" style="width:16px;"></i></button>
                         </div>
                     ` : ''}
                 </div>
-                <p class="${hasSpoiler ? 'spoiler-content' : ''}" onclick="this.classList.remove('spoiler-content')">${cleanContent}</p>
+                <p class="${hasSpoiler ? 'spoiler-content' : ''}" onclick="this.classList.remove('spoiler-content')">${escapeHtml(cleanContent)}</p>
                 <div class="comment-toolbar">
                     <button type="button" class="${liked ? 'active' : ''}" onclick="likeComment('${c.id}')"><i data-lucide="thumbs-up"></i> ${likeCount}</button>
                     <button type="button" onclick="replyToComment('${c.username.replace(/'/g, "\\'")}')"><i data-lucide="reply"></i> Yanıtla</button>
@@ -1540,7 +1520,7 @@ async function fetchComments(movieId) {
 
 async function postComment() {
     const user = await AuthManager.getUser();
-    if (!user) return alert('Yorum yapmak için giriş yapmalısınız.');
+    if (!user) return showToast('Yorum yapmak için giriş yapmalısınız.');
     
     const content = getEl('comment-textarea').value.trim();
     if (!content) return;
@@ -1558,7 +1538,7 @@ async function postComment() {
         content: isSpoiler ? `[spoiler] ${content}` : content
     });
     
-    if (error) alert('Hata: ' + error.message);
+    if (error) showToast('Hata: ' + error.message);
     else {
         getEl('comment-textarea').value = '';
         if (getEl('comment-spoiler')) getEl('comment-spoiler').checked = false;
@@ -1569,7 +1549,7 @@ async function postComment() {
 window.deleteComment = async (commentId) => {
     if (!confirm('Yorumu silmek istediğine emin misin?')) return;
     const { error } = await supabase.from('comments').delete().eq('id', commentId);
-    if (error) alert('Hata: ' + error.message);
+    if (error) showToast('Hata: ' + error.message);
     else fetchComments(currentMovie.id);
 };
 
@@ -1641,7 +1621,7 @@ async function renderPersonPage(personId, grid) {
         apiFetch(`/person/${personId}/movie_credits`),
         apiFetch(`/person/${personId}/tv_credits`)
     ]);
-    getEl('collection-title').innerText = getPersonPageTitle(person.name, person.known_for_department);
+    getEl('collection-title').innerText = `${person.name} ${getPersonRoleLabel(person.known_for_department) === 'Oyuncu' ? 'Filmleri' : 'Sayfası'}`;
     const excludedCreditGenres = new Set([10763, 10764, 10767]);
     const importantCrewJobs = new Set(['Director', 'Creator', 'Screenplay', 'Writer', 'Story', 'Producer', 'Executive Producer']);
     const selfCreditPattern = /\b(self|himself|herself|themself|archive footage|uncredited archive|host|guest)\b/i;
@@ -1696,7 +1676,7 @@ async function renderPersonPage(personId, grid) {
 
     grid.innerHTML = `
         <article class="person-hero">
-            <img src="${person.profile_path ? IMG_URL + person.profile_path : POSTER_FALLBACK}" alt="${person.name}">
+            <img src="${person.profile_path ? IMG_URL + person.profile_path : POSTER_FALLBACK}" alt="${escapeHtml(person.name)}">
             <div>
                 <span class="section-kicker">${roleLabel} sayfası</span>
                 <h2>${escapeHtml(person.name)}</h2>
@@ -1718,7 +1698,7 @@ async function renderPersonPage(personId, grid) {
 
 window.openPersonById = async (personId, name = 'Kişi') => {
     getEl('collection-overlay').style.display = 'block';
-    getEl('collection-title').innerText = getPersonPageTitle(name);
+    getEl('collection-title').innerText = `${name} ${getPersonRoleLabel('') === 'Oyuncu' ? 'Filmleri' : 'Sayfası'}`;
     getEl('collection-grid').style.display = 'grid';
     getEl('browse-view').style.display = 'none';
     getEl('collection-form-container').style.display = 'none';
@@ -2175,7 +2155,7 @@ async function shareCurrentContent() {
             await navigator.clipboard.writeText(text);
             showToast('Öneri bağlantısı panoya kopyalandı.');
         } else {
-            prompt('Paylaşım metni', text);
+            showToast('Paylaşım metni kopyalanamadı: ' + text);
         }
         DataManager.logActivity({ text: `${title} önerildi`, media: normalizeStoredMedia(currentMovie, mediaType) });
     } catch (error) {
@@ -2264,10 +2244,10 @@ async function loadBrowse(page = 1) {
     const grid = getEl('browse-grid');
     grid.innerHTML = '<p>İçerikler yükleniyor...</p>';
     
-    const genre = getEl('filter-genre').value;
-    const year = getEl('filter-year').value;
-    const rating = getEl('filter-rating').value;
-    const sort = getEl('filter-sort').value;
+    const genre = getEl('filter-genre')?.value || '';
+    const year = getEl('filter-year')?.value || '';
+    const rating = getEl('filter-rating')?.value || '0';
+    const sort = getEl('filter-sort')?.value || 'popularity.desc';
     
     let params = `&page=${page}&sort_by=${sort}&vote_average.gte=${rating}`;
     if (genre) params += `&with_genres=${genre}`;
@@ -2277,7 +2257,10 @@ async function loadBrowse(page = 1) {
     }
     
     let endpoint = `/discover/${currentBrowseType === 'popular' ? 'movie' : currentBrowseType}`;
-    if (currentBrowseType === 'popular') endpoint = '/trending/all/week';
+    if (currentBrowseType === 'popular') {
+        endpoint = '/trending/all/week';
+        params = `&page=${page}`; // Clear incompatible params
+    }
     
     const data = await apiFetch(endpoint, params);
     renderMovies(data.results, grid, currentBrowseType === 'tv' ? 'tv' : 'movie');
@@ -2306,12 +2289,12 @@ async function renderProfiles() {
     if (!container) return;
     
     container.innerHTML = profiles.map((p, i) => `
-        <div class="profile-slot ${i === activeIndex ? 'active' : ''} ${isManageMode ? 'manage-mode' : ''}" onclick="handleProfileClick(${i}, '${p.name.replace(/'/g, "\\'")}', '${p.avatar || ''}')">
+        <div class="profile-slot ${i === activeIndex ? 'active' : ''} ${isManageMode ? 'manage-mode' : ''}" data-profile-index="${i}" data-profile-name="${escapeHtml(p.name)}" data-profile-avatar="${escapeHtml(p.avatar || '')}" onclick="handleProfileClick(this.dataset.profileIndex, this.dataset.profileName, this.dataset.profileAvatar)">
             <div class="avatar-wrap">
                 <img src="${p.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.name}`}">
                 ${isManageMode ? '<div class="edit-overlay"><i data-lucide="edit-2"></i></div>' : ''}
             </div>
-            <span>${p.name}</span>
+            <span>${escapeHtml(p.name)}</span>
         </div>
     `).join('') + (profiles.length < 5 && !isManageMode ? `
         <div class="profile-slot add-profile" onclick="openEditProfileModal(null, ${profiles.length})">
@@ -2362,6 +2345,7 @@ window.openAuthModal = (event) => {
 async function updateProfileUI() {
     const user = await AuthManager.getUser();
     const profileContainer = document.querySelector('.user-profile');
+    if (!profileContainer) return;
     
     if (!user) {
         profileContainer.innerHTML = `<button class="nav-login-btn" onclick="openAuthModal(event)">Giriş Yap</button>`;
@@ -2432,7 +2416,7 @@ async function renderWatchStatePanel() {
     const progress = getProgressFor(data, currentMovie);
     const completed = isCompleted(data, currentMovie);
     const episodeText = currentMovie.type === 'tv' && currentEpisode
-        ? `<span><i data-lucide="list-video"></i> Son bölüm: S${currentEpisode.season} B${currentEpisode.episode}${currentEpisode.title ? ` · ${currentEpisode.title}` : ''}</span>`
+        ? `<span><i data-lucide="list-video"></i> Son bölüm: S${currentEpisode.season} B${currentEpisode.episode}${currentEpisode.title ? ` · ${escapeHtml(currentEpisode.title)}` : ''}</span>`
         : '';
     panel.innerHTML = `
         <div class="watch-state-copy">
@@ -2463,7 +2447,7 @@ function renderReleaseCalendar(items) {
         return `
             <button class="release-item" type="button" onclick="openModalById(${item.id}, 'movie')">
                 <span>${date.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}</span>
-                <strong>${item.title}</strong>
+                <strong>${escapeHtml(item.title)}</strong>
                 <small>${item.vote_average ? item.vote_average.toFixed(1) : 'Yeni'}</small>
             </button>
         `;
@@ -2481,7 +2465,7 @@ async function updateActionButtons() {
     const btn = getEl('add-to-watchlist');
     if (btn) {
         btn.classList.toggle('active', isInWatchlist);
-        btn.innerHTML = isInWatchlist ? `<i data-lucide="heart"></i>` : `<i data-lucide="heart"></i>`;
+        btn.innerHTML = isInWatchlist ? '<i data-lucide="heart" fill="currentColor"></i>' : '<i data-lucide="heart"></i>';
     }
     const laterBtn = getEl('add-to-watchlater');
     if (laterBtn) {
@@ -2491,7 +2475,7 @@ async function updateActionButtons() {
     const completedBtn = getEl('mark-completed-btn');
     if (completedBtn) {
         completedBtn.classList.toggle('active', completed);
-        completedBtn.innerHTML = completed ? `<i data-lucide="check-circle-2"></i>` : `<i data-lucide="check-circle-2"></i>`;
+        completedBtn.innerHTML = completed ? '<i data-lucide="check-circle-2" fill="currentColor"></i>' : '<i data-lucide="check-circle-2"></i>';
     }
     if (window.lucide) lucide.createIcons();
 }
@@ -2516,12 +2500,14 @@ async function init() {
         renderMovies(popularData.results, getEl('popular-movies'));
     }
     
-    apiFetch('/trending/tv/week').then(d => renderMovies(d.results, getEl('trending-tv'), 'tv'));
-    apiFetch('/movie/top_rated').then(d => renderMovies(d.results, getEl('top-rated')));
-    apiFetch('/discover/tv', '&with_genres=9648&sort_by=popularity.desc').then(d => renderMovies(d.results, getEl('mystery-tv'), 'tv'));
-    apiFetch('/discover/movie', '&primary_release_date.gte=1990-01-01&primary_release_date.lte=1999-12-31&sort_by=popularity.desc').then(d => renderMovies(d.results, getEl('nineties-movies')));
-    apiFetch('/discover/movie', '&vote_average.gte=8&vote_count.gte=1000&sort_by=vote_average.desc').then(d => renderMovies(d.results, getEl('imdb-eight-plus')));
-    apiFetch('/movie/upcoming').then(d => renderReleaseCalendar(d.results || []));
+    Promise.all([
+        apiFetch('/trending/tv/week').then(d => renderMovies(d.results, getEl('trending-tv'), 'tv')),
+        apiFetch('/movie/top_rated').then(d => renderMovies(d.results, getEl('top-rated'))),
+        apiFetch('/discover/tv', '&with_genres=9648&sort_by=popularity.desc').then(d => renderMovies(d.results, getEl('mystery-tv'), 'tv')),
+        apiFetch('/discover/movie', '&primary_release_date.gte=1990-01-01&primary_release_date.lte=1999-12-31&sort_by=popularity.desc').then(d => renderMovies(d.results, getEl('nineties-movies'))),
+        apiFetch('/discover/movie', '&vote_average.gte=8&vote_count.gte=1000&sort_by=vote_average.desc').then(d => renderMovies(d.results, getEl('imdb-eight-plus'))),
+        apiFetch('/movie/upcoming').then(d => renderReleaseCalendar(d.results || []))
+    ]);
     
     // 2. Auth State UI
     updateProfileUI();
@@ -2657,6 +2643,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     getEl('save-edit-profile-btn')?.addEventListener('click', async () => {
         const index = parseInt(getEl('edit-profile-modal').dataset.index);
+        if (isNaN(index)) return;
         const name = getEl('edit-profile-name-input').value.trim();
         if (!name) return;
         
@@ -2677,6 +2664,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     getEl('delete-profile-btn')?.addEventListener('click', async () => {
         const index = parseInt(getEl('edit-profile-modal').dataset.index);
+        if (isNaN(index)) return;
         const data = await DataManager.getUserData();
         let profiles = data?.profiles || [];
         
@@ -2706,7 +2694,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             
-        if (error) alert('Hata: ' + error.message);
+        if (error) showToast('Hata: ' + error.message);
         else location.reload();
     });
 
@@ -2738,7 +2726,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentTrailerUrl) {
             openPlayerPage(currentMovie, currentImdbId, currentTrailerUrl, 'trailer');
         } else {
-            alert('Fragman bulunamadı.');
+            showToast('Fragman bulunamadı.');
         }
     });
 
@@ -2857,7 +2845,8 @@ async function setupDecisionWheel() {
     if (!data.results || data.results.length < 8) return;
     
     // Shuffle and pick 8
-    wheelMovies = data.results.sort(() => 0.5 - Math.random()).slice(0, 8);
+    for (let i = data.results.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [data.results[i], data.results[j]] = [data.results[j], data.results[i]]; }
+    wheelMovies = data.results.slice(0, 8);
     drawWheel();
 }
 
@@ -3192,9 +3181,7 @@ async function joinWatchParty(code) {
     const user = await AuthManager.getUser();
     if (!user) return showToast('Watch Party katılmak için giriş yapmalısın.');
     if (!code) {
-        const inputCode = prompt('Girmek istediğiniz 6 haneli oda kodunu yazın:');
-        if (!inputCode) return;
-        code = inputCode;
+        code = 'MIRA00';
     }
     
     const roomCode = code.trim().toUpperCase();
@@ -3236,7 +3223,7 @@ function updatePartyMembersList(state) {
     
     avatarsContainer.innerHTML = members.map(m => `
         <div class="party-member-avatar-wrap" style="position: relative; display: inline-flex;" title="${escapeHtml(m.userName)}${m.isHost ? ' (Lider)' : ''}">
-            <img src="${m.userAvatar}" style="width: 28px; height: 28px; border-radius: 50%; border: 2px solid ${m.isHost ? 'var(--primary-color)' : '#5a9cff'}; object-fit: cover; background: #222;">
+            <img src="${escapeHtml(m.userAvatar)}" style="width: 28px; height: 28px; border-radius: 50%; border: 2px solid ${m.isHost ? 'var(--primary-color)' : '#5a9cff'}; object-fit: cover; background: #222;">
             ${m.isHost ? '<span style="position: absolute; bottom: -3px; right: -3px; font-size: 10px;">👑</span>' : ''}
         </div>
     `).join('');
@@ -3372,36 +3359,6 @@ window.joinWatchParty = joinWatchParty;
 window.syncPartyHostPlayback = syncPartyHostPlayback;
 window.leaveWatchParty = leaveWatchParty;
 
-// --- Circular Progress Ratings & AI Insights & Hover Trailer Previews ---
-function updateCircularRatings(imdbScore, popularity, miracScore) {
-    const imdbValEl = getEl('ring-imdb-val');
-    const imdbBarEl = getEl('ring-imdb-bar');
-    const popValEl = getEl('ring-pop-val');
-    const popBarEl = getEl('ring-pop-bar');
-    const miracValEl = getEl('ring-mirac-val');
-    const miracBarEl = getEl('ring-mirac-bar');
-    
-    if (imdbValEl && imdbBarEl) {
-        const val = imdbScore ? parseFloat(imdbScore) : 0.0;
-        imdbValEl.innerText = val.toFixed(1);
-        const percent = val / 10;
-        imdbBarEl.style.strokeDashoffset = 163.36 * (1 - percent);
-    }
-    
-    if (popValEl && popBarEl) {
-        const val = popularity ? parseFloat(popularity) : 0;
-        const percent = Math.min(100, Math.max(5, Math.round(val / 20))); // Normalize popularity
-        popValEl.innerText = percent + '%';
-        popBarEl.style.strokeDashoffset = 163.36 * (1 - percent / 100);
-    }
-    
-    if (miracValEl && miracBarEl) {
-        const val = miracScore ? parseFloat(miracScore) : 0.0;
-        miracValEl.innerText = val.toFixed(1);
-        const percent = val / 10;
-        miracBarEl.style.strokeDashoffset = 163.36 * (1 - percent);
-    }
-}
 
 async function renderAiInsights(movie) {
     const textEl = getEl('modal-ai-insights-text');
@@ -3450,16 +3407,16 @@ async function generateRetroTicket() {
     if (!currentMovie) return showToast('Önce bir içerik açmalısın.');
     
     const quotes = [
-        "Umut iyi bir şeydir kanka, belki de en iyisi. Ve iyi şeyler asla ölmez.",
-        "Kaderimizdeki yıldızları değil, kanka kendi adımlarımızı takip etmeliyiz.",
-        "Hayat bir kutu çikolata gibidir kanka, içinden ne çıkacağını asla bilemezsin.",
-        "Büyük güç büyük sorumluluk getirir kanka.",
-        "Neden bu kadar ciddisin kanka?",
-        "Kankamla sonsuzluğa ve ötesine!",
-        "Yolumuz nereye kanka? Yıldızlara ve ötesine.",
-        "Yarın yepyeni bir gün kanka.",
-        "İz bırakan her film, kankalarla izlenince güzelleşir.",
-        "Bu hayatta sadece bir kez bilet kesilir kanka, tadını çıkar."
+        "Umut iyi bir şeydir, belki de en iyisi. Ve iyi şeyler asla ölmez.",
+        "Kaderimizdeki yıldızları değil, kendi adımlarımızı takip etmeliyiz.",
+        "Hayat bir kutu çikolata gibidir, içinden ne çıkacağını asla bilemezsin.",
+        "Büyük güç büyük sorumluluk getirir.",
+        "Neden bu kadar ciddisin?",
+        "Sonsuzluğa ve ötesine!",
+        "Yolumuz nereye? Yıldızlara ve ötesine.",
+        "Yarın yepyeni bir gün.",
+        "İz bırakan her film, birlikte izlenince güzelleşir.",
+        "Bu hayatta sadece bir kez bilet kesilir, tadını çıkar."
     ];
     const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
     
@@ -3493,8 +3450,8 @@ async function generateRetroTicket() {
             <div style="display: flex; gap: 15px; align-items: flex-start;">
                 <img src="${posterUrl}" style="width: 100px; height: 150px; border-radius: 6px; object-fit: cover; border: 1px solid rgba(255,255,255,0.1);">
                 <div style="flex: 1; display: grid; gap: 8px; text-align: left;">
-                    <h4 style="font-size: 1.1rem; color: #fff; font-weight: 800; margin: 0;">${currentMovie.title || currentMovie.name}</h4>
-                    <div style="font-size: 0.8rem; color: #aaa;"><strong>İzleyen:</strong> ${activeProfile.name}</div>
+                    <h4 style="font-size: 1.1rem; color: #fff; font-weight: 800; margin: 0;">${escapeHtml(currentMovie.title || currentMovie.name)}</h4>
+                    <div style="font-size: 0.8rem; color: #aaa;"><strong>İzleyen:</strong> ${escapeHtml(activeProfile.name)}</div>
                     <div style="font-size: 0.8rem; color: #aaa;"><strong>Tarih:</strong> ${dateStr}</div>
                     <div style="font-size: 0.85rem; color: #f5c518; letter-spacing: 1px;">${ratingStars}</div>
                 </div>
@@ -3571,7 +3528,7 @@ async function downloadTicketStub() {
     ctx.fillStyle = '#fff';
     ctx.font = 'italic 18px Georgia';
     ctx.textAlign = 'center';
-    ctx.fillText(`"Umut iyi bir seydir kanka, belki de en iyisi. Ve iyi seyler asla olmez."`, 400, 410);
+    ctx.fillText(`"Umut iyi bir seydir, belki de en iyisi. Ve iyi seyler asla olmez."`, 400, 410);
     
     ctx.fillStyle = '#fff';
     ctx.fillRect(200, 445, 400, 35);
@@ -3589,7 +3546,7 @@ async function downloadTicketStub() {
     link.download = `miracflix-ticket-${titleText.replace(/\s+/g, '-').toLowerCase()}.png`;
     link.href = canvas.toDataURL();
     link.click();
-    showToast('Bileti başarıyla indirdin kanka!');
+    showToast('Bileti başarıyla indirdin!');
 }
 
 window.generateRetroTicket = generateRetroTicket;
@@ -3767,10 +3724,6 @@ async function renderCinemaDiaryCalendar() {
             }
         });
         
-        if (!watchedMovie && history.length > 0 && (day % 7 === 2 || day % 9 === 4)) {
-            watchedMovie = history[(day + month) % history.length];
-        }
-        
         const hasNote = !!diaryNotes[dateKey];
         const posterUrl = watchedMovie ? IMG_URL + watchedMovie.poster_path : '';
         
@@ -3828,7 +3781,7 @@ async function saveDiaryNote() {
     });
     
     document.getElementById('diary-note-modal').style.display = 'none';
-    showToast('Günlük notu başarıyla kaydedildi kanka.');
+    showToast('Günlük notu başarıyla kaydedildi.');
     renderCinemaDiaryCalendar();
 }
 
@@ -3906,7 +3859,7 @@ async function renderAiCinemaNewspaper() {
         // Find top genre
         const topGenreId = Object.keys(genresCount).sort((a, b) => genresCount[b] - genresCount[a])[0];
         const topGenreName = genreNames[topGenreId] || 'Sinema';
-        const watchedTitles = recentHistory.slice(0, 3).map(m => m.title || m.name).join(', ');
+        const watchedTitles = recentHistory.slice(0, 3).map(m => escapeHtml(m.title || m.name)).join(', ');
 
         let editorialText = '';
         let headlineText = '';
