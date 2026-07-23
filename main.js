@@ -66,8 +66,9 @@ if (!supabase) {
 // Configuration
 const API_KEY = import.meta.env?.VITE_TMDB_API_KEY || '20a0abcbeaf2431b5807118f4fe80c5e'; 
 const BASE_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'https://api.themoviedb.org/3' : '/api-tmdb/3';
-const IMG_URL = 'https://image.tmdb.org/t/p/w500';
-const BACKDROP_URL = 'https://image.tmdb.org/t/p/original';
+const _isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const IMG_URL = _isLocal ? 'https://image.tmdb.org/t/p/w500' : '/tmdb-img/t/p/w500';
+const BACKDROP_URL = _isLocal ? 'https://image.tmdb.org/t/p/original' : '/tmdb-img/t/p/original';
 const POSTER_FALLBACK = 'https://placehold.co/400x600/181818/ffffff?text=MIRACFLIX';
 const BACKDROP_FALLBACK = 'linear-gradient(135deg, #111 0%, #1f1f1f 55%, #000 100%)';
 

@@ -24,6 +24,12 @@
     Cache-Control = "public, max-age=0, must-revalidate"
 
 [[redirects]]
+  from = "/tmdb-img/*"
+  to = "https://image.tmdb.org/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api-tmdb/*"
   to = "https://api.themoviedb.org/:splat"
   status = 200
